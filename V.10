@@ -1,0 +1,773 @@
+"use client"
+
+import { useState, useEffect } from "react"
+import { Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ComposedChart, Bar, Line } from "recharts"
+import { getCoinById } from "@/lib/crypto-coins"
+
+interface CoinChartProps {
+  coinId: number
+  timeframe: string
+}
+
+export default function CoinChart({ coinId, timeframe }: CoinChartProps) {
+  const [data, setData] = useState<any[]>([])
+  const coin = getCoinById(coinId)
+
+  useEffect(() => {
+    // Generate random chart data based on timeframe
+    const generateData = () => {
+      const newData = []
+      const dataPoints = timeframe === "1d" ? 24 : timeframe === "1w" ? 7 : timeframe === "1m" ? 30 : 365
+
+      const volatility = coin?.volatilityFactor || 1.2
+      let price = 1000 + Math.random() * 9000
+
+      for (let i = 0; i < dataPoints; i++) {
+        const change = (Math.random() - 0.5) * price * 0.05 * volatility
+        price += change
+
+        const open = price
+        const close = price + (Math.random() - 0.5) * price * 0.02 * volatility
+        const high = Math.max(open, close) + Math.random() * price * 0.01 * volatility
+        const low = Math.min(open, close) - Math.random() * price * 0.01 * volatility
+
+        const volume = Math.random() * 1000000 + 100000
+
+        // Calculate MACD
+        const macd = (Math.random() - 0.5) * 10
+        const signal = macd + (Math.random() - 0.5) * 5
+        const histogram = macd - signal
+
+        // Calculate RSI
+        const rsi = Math.random() * 100
+
+        newData.push({
+          name:
+            timeframe === "1d"
+              ? `${i}:00`
+              : timeframe === "1w"
+                ? `Day ${i + 1}`
+                : timeframe === "1m"
+                  ? `Day ${i + 1}`
+                  : `Month ${Math.floor(i / 30) + 1}`,
+          price,
+          open,
+          close,
+          high,
+          low,
+          volume,
+          macd,
+          signal,
+          histogram,
+          rsi,
+        })
+      }
+
+      return newData
+    }
+
+    setData(generateData())
+  }, [timeframe, coinId, coin])
+
+  if (data.length === 0) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="text-vibrant-purple">Loading chart data...</div>
+      </div>
+    )
+  }
+
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <ComposedChart
+        data={data}
+        margin={{
+          top: 20,
+          right: 20,
+          bottom: 20,
+          left: 20,
+        }}
+      >
+        <CartesianGrid strokeDasharray="3 3" stroke="#444" />
+        <XAxis dataKey="name" tick={{ fill: "#9ca3af" }} axisLine={{ stroke: "#4b5563" }} />
+        <YAxis
+          yAxisId="left"
+          domain={["auto", "auto"]}
+          tick={{ fill: "#9ca3af" }}
+          axisLine={{ stroke: "#4b5563" }}
+          tickFormatter={(value) => `$${value.toLocaleString()}`}
+        />
+        <YAxis
+          yAxisId="right"
+          orientation="right"
+          domain={["auto", "auto"]}
+          tick={{ fill: "#9ca3af" }}
+          axisLine={{ stroke: "#4b5563" }}
+          tickFormatter={(value) => `$${value.toLocaleString()}`}
+        />
+        <Tooltip
+          contentStyle={{ backgroundColor: "#1f2937", borderColor: "#374151", color: "#f3f4f6" }}
+          formatter={(value: any) => [`$${Number(value).toLocaleString()}`, "Price"]}
+        />
+        <Area type="monotone" dataKey="price" stroke="#f59e0b" fill="url(#colorPrice)" yAxisId="left" />
+        <Line type="monotone" dataKey="high" stroke="#10b981" dot={false} yAxisId="left" />
+        <Line type="monotone" dataKey="low" stroke="#ef4444" dot={false} yAxisId="left" />
+        <Bar dataKey="volume" fill="#6366f1" yAxisId="right" opacity={0.3} />
+        <defs>
+          <linearGradient id="colorPrice" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.8} />
+            <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
+          </linearGradient>
+        </defs>
+      </ComposedChart>
+    </ResponsiveContainer>
+  )
+}
+
+import { cryptoHorses, specialEvents, gameConfig, type CryptoHorse } from "./crypto-horses"
+
+export interface Bet {
+  id: string
+  horseId: number
+  horseName: string
+  amount: number
+  betType: "win" | "place" | "show"
+  odds: number
+  timestamp: Date
+  status: "pending" | "won" | "lost" | "canceled"
+  potentialPayout: number
+  payout?: number
+}
+
+export interface PlayerState {
+  balance: number
+  totalBetsPlaced: number
+  totalAmountBet: number
+  totalAmountWon: number
+  favoriteHorse: number | null
+  betHistory: Bet[]
+}
+
+export interface RaceHorse {
+  horseId: number
+  horseName: string
+  position: number
+  speed: number
+  finished: boolean
+  finishTime: Date | null
+  finalPosition: number | null
+}
+
+export interface RaceResult {
+  horseId: number
+  horseName: string
+  position: number
+  finishTime: Date
+}
+
+export interface Race {
+  id: string
+  name: string
+  startTime: Date
+  endTime?: Date
+  status: "starting" | "active" | "finished"
+  length: number
+  horses: RaceHorse[]
+  conditions: RaceConditions
+  specialEvents: ((typeof specialEvents)[0] & { triggerTime: number })[]
+  finishedHorses: RaceResult[]
+  results: RaceResult[] | null
+}
+
+export interface RaceConditions {
+  weather: string
+  trackType: string
+  marketVolatility: number
+  favoredHorseTypes: string[]
+}
+
+export interface GameState {
+  liquidityPool: number
+  houseProfit: number
+  totalBetsProcessed: number
+  activeRaces: Race[]
+  marketConditions: "neutral" | "bullish" | "bearish"
+  marketTrend: number
+  availableBonuses: any[]
+  totalTransactions: number
+  specialEventsActive: Record<string, boolean>
+}
+
+class CryptoRaceEngine {
+  private playerState: PlayerState
+  private gameState: GameState
+
+  constructor() {
+    // Initialize player state
+    this.playerState = {
+      balance: 1000,
+      totalBetsPlaced: 0,
+      totalAmountBet: 0,
+      totalAmountWon: 0,
+      favoriteHorse: null,
+      betHistory: [],
+    }
+
+    // Initialize game state
+    this.gameState = {
+      liquidityPool: 10000,
+      houseProfit: 0,
+      totalBetsProcessed: 0,
+      activeRaces: [],
+      marketConditions: "neutral",
+      marketTrend: 0,
+      availableBonuses: [],
+      totalTransactions: 0,
+      specialEventsActive: {},
+    }
+
+    // Start market updates
+    this.startMarketUpdates()
+  }
+
+  /**
+   * Get player state
+   */
+  getPlayerState(): PlayerState {
+    return { ...this.playerState }
+  }
+
+  /**
+   * Get game state
+   */
+  getGameState(): GameState {
+    return { ...this.gameState }
+  }
+
+  /**
+   * Get all crypto horses
+   */
+  getHorses(): CryptoHorse[] {
+    return cryptoHorses
+  }
+
+  /**
+   * Get a specific horse by ID
+   */
+  getHorse(id: number): CryptoHorse | undefined {
+    return cryptoHorses.find((h) => h.id === id)
+  }
+
+  /**
+   * Places a bet on a horse in an upcoming race
+   */
+  placeBet(
+    horseId: number,
+    amount: number,
+    betType: "win" | "place" | "show" = "win",
+  ): { success: boolean; message: string; betDetails?: Bet } {
+    // Validate bet amount
+    if (amount < gameConfig.minBetAmount || amount > gameConfig.maxBetAmount) {
+      return {
+        success: false,
+        message: `Bet amount must be between ${gameConfig.minBetAmount} and ${gameConfig.maxBetAmount}`,
+      }
+    }
+
+    // Check if player has sufficient balance
+    if (this.playerState.balance < amount) {
+      return { success: false, message: "Insufficient balance" }
+    }
+
+    // Validate horse ID
+    const horse = cryptoHorses.find((h) => h.id === horseId)
+    if (!horse) {
+      return { success: false, message: "Invalid horse selection" }
+    }
+
+    // Calculate odds based on horse stats and market conditions
+    const odds = this.calculateOdds(horse)
+
+    // Process the bet
+    this.playerState.balance -= amount
+    this.playerState.totalBetsPlaced++
+    this.playerState.totalAmountBet += amount
+
+    // Apply house edge and add to liquidity pool
+    const houseEdgeAmount = amount * (gameConfig.houseEdgePercentage / 100)
+    const liquidityContribution = amount * (gameConfig.liquidityReservePercentage / 100)
+
+    this.gameState.houseProfit += houseEdgeAmount
+    this.gameState.liquidityPool += liquidityContribution
+    this.gameState.totalBetsProcessed++
+    this.gameState.totalTransactions++
+
+    // Record bet in history
+    const betId = Date.now().toString(36) + Math.random().toString(36).substr(2, 5)
+    const betDetails: Bet = {
+      id: betId,
+      horseId,
+      horseName: horse.name,
+      amount,
+      betType,
+      odds,
+      timestamp: new Date(),
+      status: "pending",
+      potentialPayout: this.calculatePotentialPayout(amount, odds),
+    }
+
+    this.playerState.betHistory.push(betDetails)
+
+    return {
+      success: true,
+      message: "Bet placed successfully",
+      betDetails,
+    }
+  }
+
+  /**
+   * Calculate the odds for a horse based on its stats and current market conditions
+   */
+  private calculateOdds(horse: CryptoHorse): number {
+    // Base odds based on horse speed
+    let baseOdds = (100 - horse.baseSpeed) / 10
+
+    // Adjust for volatility
+    baseOdds *= horse.volatilityFactor
+
+    // Adjust for market conditions
+    if (this.gameState.marketConditions === "bullish") {
+      baseOdds *= 0.9 // Lower odds in bullish markets (more favorites win)
+    } else if (this.gameState.marketConditions === "bearish") {
+      baseOdds *= 1.2 // Higher odds in bearish markets (more unpredictable)
+    }
+
+    // Apply market trend adjustment
+    baseOdds *= 1 + this.gameState.marketTrend / 100
+
+    // Ensure minimum odds
+    baseOdds = Math.max(1.2, baseOdds)
+
+    // Limit maximum odds
+    baseOdds = Math.min(baseOdds, gameConfig.maxPayoutMultiplier)
+
+    // Round to 2 decimal places
+    return Math.round(baseOdds * 100) / 100
+  }
+
+  /**
+   * Calculate potential payout for a bet
+   */
+  private calculatePotentialPayout(amount: number, odds: number): number {
+    return Math.round(amount * odds * 100) / 100
+  }
+
+  /**
+   * Starts a new race with the specified horses
+   */
+  startRace(
+    participatingHorseIds: number[],
+    raceName = "Crypto Cup",
+  ): {
+    success: boolean
+    message: string
+    raceId?: string
+    raceDetails?: Race
+  } {
+    // Check if we can start another race
+    if (this.gameState.activeRaces.length >= gameConfig.maxActiveRaces) {
+      return { success: false, message: "Maximum number of active races reached" }
+    }
+
+    // Validate participating horses
+    const horses = participatingHorseIds.map((id) => cryptoHorses.find((h) => h.id === id))
+    if (horses.some((h) => h === undefined)) {
+      return { success: false, message: "Invalid horse ID provided" }
+    }
+
+    // Generate race ID
+    const raceId = Date.now().toString(36) + Math.random().toString(36).substr(2, 5)
+
+    // Determine race conditions and special events
+    const raceConditions = this.determineRaceConditions()
+    const specialEventsForRace = this.selectSpecialEvents()
+
+    // Initialize horse positions
+    const horsePositions: RaceHorse[] = horses.map((horse) => {
+      if (!horse) return {} as RaceHorse // This should never happen due to validation above
+
+      return {
+        horseId: horse.id,
+        horseName: horse.name,
+        position: 0,
+        speed: this.calculateInitialSpeed(horse, raceConditions, specialEventsForRace),
+        finished: false,
+        finishTime: null,
+        finalPosition: null,
+      }
+    })
+
+    // Create race object
+    const race: Race = {
+      id: raceId,
+      name: raceName,
+      startTime: new Date(),
+      status: "starting",
+      length: gameConfig.trackLength,
+      horses: horsePositions,
+      conditions: raceConditions,
+      specialEvents: specialEventsForRace,
+      finishedHorses: [],
+      results: null,
+    }
+
+    // Add to active races
+    this.gameState.activeRaces.push(race)
+
+    // Set timeout to start the race after countdown
+    setTimeout(() => {
+      race.status = "active"
+      this.runRaceSimulation(raceId)
+    }, 3000)
+
+    return {
+      success: true,
+      message: "Race starting",
+      raceId,
+      raceDetails: race,
+    }
+  }
+
+  /**
+   * Determines race conditions based on current market state
+   */
+  private determineRaceConditions(): RaceConditions {
+    const weather = ["sunny", "rainy", "windy", "stormy", "clear"]
+    const trackTypes = ["dirt", "turf", "synthetic", "muddy", "fast"]
+
+    const conditions: RaceConditions = {
+      weather: weather[Math.floor(Math.random() * weather.length)],
+      trackType: trackTypes[Math.floor(Math.random() * trackTypes.length)],
+      marketVolatility: Math.random() * 10, // 0-10 scale of volatility
+      favoredHorseTypes: [],
+    }
+
+    // Determine which types of horses have an advantage based on conditions
+    if (conditions.weather === "rainy" || conditions.trackType === "muddy") {
+      conditions.favoredHorseTypes.push("stable") // Stablecoins perform better in uncertain conditions
+    }
+
+    if (conditions.marketVolatility > 7) {
+      conditions.favoredHorseTypes.push("volatile") // High volatility coins perform better in volatile markets
+    } else if (conditions.marketVolatility < 3) {
+      conditions.favoredHorseTypes.push("stable")
+    }
+
+    if (this.gameState.marketConditions === "bullish") {
+      conditions.favoredHorseTypes.push("bullish")
+    } else if (this.gameState.marketConditions === "bearish") {
+      conditions.favoredHorseTypes.push("bearish")
+    }
+
+    return conditions
+  }
+
+  /**
+   * Selects special events that will occur during the race
+   */
+  private selectSpecialEvents(): ((typeof specialEvents)[0] & { triggerTime: number })[] {
+    const numberOfEvents = Math.floor(Math.random() * 3) + 1 // 1-3 events per race
+    const selectedEvents: ((typeof specialEvents)[0] & { triggerTime: number })[] = []
+
+    for (let i = 0; i < numberOfEvents; i++) {
+      const event = specialEvents[Math.floor(Math.random() * specialEvents.length)]
+
+      // Don't add duplicate events
+      if (!selectedEvents.some((e) => e.id === event.id)) {
+        selectedEvents.push({
+          ...event,
+          triggerTime: Math.random() * 0.8 + 0.1, // Will trigger between 10% and 90% of race completion
+        })
+      }
+    }
+
+    return selectedEvents
+  }
+
+  /**
+   * Calculates initial speed for a horse based on its stats and race conditions
+   */
+  private calculateInitialSpeed(
+    horse: CryptoHorse,
+    conditions: RaceConditions,
+    specialEvents: ((typeof specialEvents)[0] & { triggerTime: number })[],
+  ): number {
+    let speed = horse.baseSpeed
+
+    // Adjust for race conditions
+    if (conditions.favoredHorseTypes.includes("stable") && ["USDT", "USDC", "DAI"].includes(horse.symbol)) {
+      speed *= 1.1 // Stablecoins get a boost in certain conditions
+    }
+
+    if (conditions.favoredHorseTypes.includes("volatile") && ["DOGE", "SHIB", "APE"].includes(horse.symbol)) {
+      speed *= 1.15 // Volatile coins get a boost in volatile conditions
+    }
+
+    // Weather effects
+    if (conditions.weather === "rainy" && horse.symbol === "LINK") {
+      speed *= 1.05 // Chainlink performs well in rainy conditions (oracle joke)
+    }
+
+    if (conditions.weather === "stormy") {
+      speed *= 0.9 + Math.random() * 0.3 // More random performance in stormy weather
+    }
+
+    // Track type effects
+    if (conditions.trackType === "synthetic" && ["ETH", "DOT", "AVAX"].includes(horse.symbol)) {
+      speed *= 1.08 // Smart contract platforms do well on "synthetic" tracks
+    }
+
+    // Add some randomness (±5%)
+    speed *= 0.95 + Math.random() * 0.1
+
+    return speed
+  }
+
+  /**
+   * Runs the race simulation for a specific race
+   */
+  private runRaceSimulation(raceId: string): void {
+    const race = this.gameState.activeRaces.find((r) => r.id === raceId)
+    if (!race || race.status !== "active") return
+
+    const raceInterval = setInterval(() => {
+      // Update positions of all horses
+      race.horses.forEach((horse) => {
+        if (horse.finished) return
+
+        // Calculate speed adjustments based on race progress
+        const raceProgress = horse.position / race.length
+        const adjustedSpeed = this.updateHorseSpeed(horse, race, raceProgress)
+
+        // Move the horse
+        horse.position += adjustedSpeed
+
+        // Check if horse has finished
+        if (horse.position >= race.length) {
+          horse.position = race.length
+          horse.finished = true
+          horse.finishTime = new Date()
+          horse.finalPosition = race.finishedHorses.length + 1
+          race.finishedHorses.push({
+            horseId: horse.horseId,
+            horseName: horse.horseName,
+            position: horse.finalPosition,
+            finishTime: horse.finishTime,
+          })
+        }
+      })
+
+      // Check if race is finished
+      if (race.horses.every((h) => h.finished) || race.finishedHorses.length >= 3) {
+        clearInterval(raceInterval)
+        this.finishRace(raceId)
+      }
+    }, gameConfig.raceTickRate)
+  }
+
+  /**
+   * Updates a horse's speed based on race conditions and progress
+   */
+  private updateHorseSpeed(horse: RaceHorse, race: Race, raceProgress: number): number {
+    const currentHorse = cryptoHorses.find((h) => h.id === horse.horseId)
+    if (!currentHorse) return horse.speed
+
+    let speedModifier = 1.0
+
+    // Check for triggering special events
+    race.specialEvents.forEach((event) => {
+      if (raceProgress >= event.triggerTime && !this.gameState.specialEventsActive[event.id + "-" + race.id]) {
+        this.gameState.specialEventsActive[event.id + "-" + race.id] = true
+
+        // Apply effect based on the event and horse
+        if (event.id === "whale_splash") {
+          // Whale movements affect high market cap coins differently
+          if (["BTC", "ETH", "BNB"].includes(currentHorse.symbol)) {
+            speedModifier *= event.modifier * 0.9 // Less affected by whale movements
+          } else {
+            speedModifier *= event.modifier
+          }
+        } else if (event.id === "bull_run") {
+          speedModifier *= event.modifier
+        } else if (event.id === "bear_trap") {
+          speedModifier *= event.modifier
+        } else if (event.id === "geo_market") {
+          // Random effect for different horses
+          speedModifier *= event.modifier * (0.9 + Math.random() * 0.2)
+        } else if (event.id === "fomo_boost" && horse.position > race.length * 0.5) {
+          // FOMO affects leaders more
+          speedModifier *= event.modifier
+        } else if (event.id === "hash_power_surge" && ["BTC", "LTC", "XMR"].includes(currentHorse.symbol)) {
+          // Hash power surge benefits proof-of-work coins
+          speedModifier *= event.modifier
+        } else if (event.id === "staking_momentum" && ["ETH", "DOT", "ADA"].includes(currentHorse.symbol)) {
+          // Staking momentum benefits proof-of-stake coins
+          speedModifier *= event.modifier
+        } else {
+          // Default modifier for other events
+          speedModifier *= 0.9 + Math.random() * 0.2
+        }
+      }
+    })
+
+    // Race stage effects
+    if (raceProgress < 0.2) {
+      // Starting phase
+      speedModifier *= 0.95 + Math.random() * 0.1
+    } else if (raceProgress > 0.8) {
+      // Final sprint
+      speedModifier *= 1.05 + Math.random() * 0.15
+    }
+
+    // Add some randomness to make the race more interesting
+    speedModifier *= 0.98 + Math.random() * 0.04
+
+    return (horse.speed * speedModifier) / 10 // Normalize speed
+  }
+
+  /**
+   * Finishes a race and processes the results
+   */
+  private finishRace(raceId: string): { success: boolean; message: string; results?: RaceResult[] } {
+    const race = this.gameState.activeRaces.find((r) => r.id === raceId)
+    if (!race) return { success: false, message: "Race not found" }
+
+    race.status = "finished"
+    race.endTime = new Date()
+
+    // Finish any unfinished horses (if we ended at top 3)
+    race.horses.forEach((horse) => {
+      if (!horse.finished) {
+        horse.position = race.length
+        horse.finished = true
+        horse.finishTime = race.endTime
+        horse.finalPosition = race.finishedHorses.length + 1
+        race.finishedHorses.push({
+          horseId: horse.horseId,
+          horseName: horse.horseName,
+          position: horse.finalPosition,
+          finishTime: horse.finishTime,
+        })
+      }
+    })
+
+    // Sort finishedHorses by position
+    race.finishedHorses.sort((a, b) => a.position - b.position)
+
+    // Process bets
+    this.processBets(race)
+
+    // Remove from active races and store in completed races
+    this.gameState.activeRaces = this.gameState.activeRaces.filter((r) => r.id !== raceId)
+
+    // Return race results
+    return {
+      success: true,
+      message: "Race finished",
+      results: race.finishedHorses,
+    }
+  }
+
+  /**
+   * Processes all bets for a completed race
+   */
+  private processBets(race: Race): void {
+    // Find all pending bets for this race
+    const pendingBets = this.playerState.betHistory.filter(
+      (bet) => bet.status === "pending" && race.horses.some((h) => h.horseId === bet.horseId),
+    )
+
+    pendingBets.forEach((bet) => {
+      const horseResult = race.finishedHorses.find((h) => h.horseId === bet.horseId)
+
+      if (!horseResult) {
+        bet.status = "canceled"
+        this.playerState.balance += bet.amount
+        return
+      }
+
+      let isWinner = false
+      let adjustedOdds = bet.odds
+
+      // Check if bet won based on bet type
+      if (bet.betType === "win" && horseResult.position === 1) {
+        isWinner = true
+      } else if (bet.betType === "place" && horseResult.position <= 2) {
+        isWinner = true
+        adjustedOdds = bet.odds * 0.6 // Reduced odds for place bets
+      } else if (bet.betType === "show" && horseResult.position <= 3) {
+        isWinner = true
+        adjustedOdds = bet.odds * 0.4 // Reduced odds for show bets
+      }
+
+      if (isWinner) {
+        const payout = bet.amount * adjustedOdds
+
+        // Check if payout exceeds maximum payout or liquidity pool
+        const maxPayout = bet.amount * gameConfig.maxPayoutMultiplier
+        const safePayout = Math.min(payout, maxPayout, this.gameState.liquidityPool * 0.5)
+
+        this.playerState.balance += safePayout
+        this.playerState.totalAmountWon += safePayout
+        this.gameState.liquidityPool -= safePayout - bet.amount
+
+        bet.status = "won"
+        bet.payout = safePayout
+      } else {
+        bet.status = "lost"
+      }
+    })
+  }
+
+  /**
+   * Start periodic market updates
+   */
+  private startMarketUpdates(): void {
+    setInterval(() => {
+      // Randomly change market conditions
+      const marketRoll = Math.random()
+      if (marketRoll < 0.3) {
+        this.gameState.marketConditions = "bullish"
+      } else if (marketRoll < 0.6) {
+        this.gameState.marketConditions = "bearish"
+      } else {
+        this.gameState.marketConditions = "neutral"
+      }
+
+      // Update market trend (-10 to +10)
+      this.gameState.marketTrend = Math.floor(Math.random() * 21) - 10
+    }, gameConfig.marketUpdateInterval)
+  }
+
+  /**
+   * Add coins to player balance (for deposits)
+   */
+  addCoins(amount: number): boolean {
+    if (amount <= 0) return false
+    this.playerState.balance += amount
+    return true
+  }
+
+  /**
+   * Remove coins from player balance (for withdrawals)
+   */
+  removeCoins(amount: number): boolean {
+    if (amount <= 0 || amount > this.playerState.balance) return false
+    this.playerState.balance -= amount
+    return true
+  }
+}
+
+// Create a singleton instance
+export const cryptoRaceEngine = new CryptoRaceEngine()
+
