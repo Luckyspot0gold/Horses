@@ -1,0 +1,197 @@
+# Crypto Classic *8 in the Gate*
+
+Welcome to Crypto Classic *8 in the Gate*! A horse racing game integrated with top 36 Crypto Currencies.
+
+## Features
+- **Horse Racing Track**: 3D top-down view of the horse racing track.
+- **Jumbotron**: Displays the 8 horses and their numbers.
+- **Coin Betting**: Place wagers on the horses with multiple betting options.
+- **Horse Selection**: Select your horse jockey from the top 36 Crypto Currencies.
+- **Educational Selection**: Learn about gameplay, betting, and risk management.
+- **Indicators Watch**: Watch real-time indicators and market data.
+- **Mini Quiz**: Test your knowledge with a mini quiz.
+- **Real-time Market Data**: View real-time market data.
+- **Risk Management**: Manage your risk with betting limits and stop-loss orders.
+- **Iconic Horse Race Music**: Enjoy background music throughout the game.
+
+## Installation
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/LuckyspotOgold/CryptoClassic.git
+   cd CryptoClassic
+npm install
+npm start
+
+### Step 8: Example Full Implementation
+
+Here's a more complete example of how you can integrate these changes into your existing project:
+
+#### `App.js`:
+```javascript
+import React from 'react';
+import './App.css';
+import Track from './components/Track';
+import Jumbotron from './components/Jumbotron';
+import Betting from './components/Betting';
+import Wallet from './components/Wallet';
+import Wager from './components/Wager';
+import Sponsorship from './components/Sponsorship';
+import SP500 from './components/SP500';
+import Magic from './components/Magic';
+import Education from './components/Education';
+import { Howl, Howler } from 'howler';
+import horseRaceMusic from './sounds/horse_race_music.mp3';
+
+const App = () => {
+  useEffect(() => {
+    const sound = new Howl({
+      src: [horseRaceMusic],
+      loop: true,
+      volume: 0.5,
+    });
+
+    sound.play();
+
+    return () => {
+      sound.unload();
+    };
+  }, []);
+
+  return (
+    <div className="App">
+      <header className="App-header">
+        <img src="/images/crypto_classic_logo.svg" alt="Crypto Classic *8 in the Gate*" />
+        <h1>Crypto Classic *8 in the Gate*</h1>
+      </header>
+      <Track />
+      <Jumbotron />
+      <Betting />
+      <Wallet />
+      <Wager />
+      <Sponsorship />
+      <SP500 />
+      <Magic />
+      <Education />
+    </div>
+  );
+};
+
+export default App;
+body {
+  font-family: Arial, sans-serif;
+  background-color: #f0f0f0;
+  color: #333;
+  margin: 0;
+  padding: 0;
+}
+
+.App {
+  text-align: center;
+}
+
+.App-header {
+  background-color: #fff;
+  padding: 20px;
+  border-bottom: 1px solid #ccc;
+}
+
+.App-header img {
+  width: 100px;
+  height: auto;
+}
+
+.button {
+  background-color: #007bff;
+  color: #fff;
+  border: none;
+  padding: 10px 20px;
+  margin: 5px;
+  cursor: pointer;
+  border-radius: 5px;
+  transition: background-color 0.3s;
+}
+
+.button:hover {
+  background-color: #0056b3;
+}
+
+.betting-option {
+  background-color: #28a745;
+}
+
+.betting-option:hover {
+  background-color: #218838;
+}
+
+.sponsorship-option {
+  background-color: #ffc107;
+}
+
+.sponsorship-option:hover {
+  background-color: #e0a800;
+}
+
+.age-verification {
+  background-color: #fff;
+  padding: 20px;
+  border: 1px solid #ccc;
+  margin: 20px;
+}
+
+.age-verification input[type="checkbox"] {
+  accent-color: #007bff; /* Change checkbox color */
+}
+
+.age-verification label {
+  color: #333; /* Ensure label is visible */
+}import React, { useEffect, useState } from 'react';
+import axios from 'axios';
+
+const SP500 = () => {
+  const [marketData, setMarketData] = useState([]);
+
+  useEffect(() => {
+    const fetchMarketData = async () => {
+      const response = await axios.get('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=bitcoin,ethereum');
+      setMarketData(response.data);
+    };
+
+    fetchMarketData();
+    const interval = setInterval(fetchMarketData, 60000); // Fetch data every minute
+
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div className="sp500">
+      <h2>Real-time Market Data</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Crypto</th>
+            <th>Price</th>
+            <th>Market Cap</th>
+          </tr>
+        </thead>
+        <tbody>
+          {marketData.map((coin) => (
+            <tr key={coin.id}>
+              <td>{coin.name}</td>
+              <td>${coin.current_price}</td>
+              <td>${coin.market_cap}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+export default SP500;
+npm install gh-pages --save-
+"homepage": "https://LuckyspotOgold.github.io/CryptoClassic",
+"scripts": {
+  "predeploy": "npm run build",
+  "deploy": "gh-pages -d build"
+}
+npm: deploy run 
