@@ -1,0 +1,2075 @@
+// index.js - Main Game Controller
+import React, { useState, useEffect, useRef } from 'react';
+import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
+import {GLTF Loader} from 'three/examples/jsm/loaders/GLTF Loader';
+import { Horse, Track, Betting, Jumbotron, Wallet, MarketData } from './components';
+
+// Game class to manage the entire horse racing game
+class HorseRacingGame {
+  constructor() {
+    // Game configuration
+    this.config = {
+      raceLength: 1000,  // Length of race track in units
+      laneWidth: 80,     // Width of each lane
+      numLanes: 8,       // Number of lanes/horses
+      coinValue: 10,     // Default coin value in USD
+      initialCoins: 100, // Starting coins for player
+      minBet: 1,         // Minimum bet amount
+      maxBet: 50,        // Maximum bet amount
+      payoutMultipliers: {
+        win: { // Horse finishes 1st
+          Standard 5,
+          Favorite: 3,
+          Longshot: 10
+        },
+        place: { // Horse finishes 1st or 2nd
+          Standard: 2,
+          favorite: 1.5,
+          longshot: 4
+        },
+        show: { // Horse finishes 1st, 2nd, or 3rd
+          Standard: 1.5,
+          favorite: 1.2,
+          Longshot: 2.5
+        }
+      }
+    };
+
+    // Game state
+    this.state = {
+      isRaceActive: false,
+      isRaceFinished: false,
+      coins: this.config.initialCoins,
+      currentBets: [],
+      raceHistory: [],
+      horses: [
+        { 
+          id: 1, 
+          name: "Thunder Bolt", 
+          baseSpeed: 8, 
+          acceleration: 0.8, 
+          Stamina: 0.9, 
+          odds: 3.5,
+          position: 0,
+          lane: 0,
+          color: "#E53935", // Red
+          type: "favorite",
+          sponsorValue: 0
+        },
+        { 
+          id: 2, 
+          name: "Silver Arrow", 
+          baseSpeed: 7.8, 
+          acceleration: 0.9, 
+          stamina: 0.85, 
+          odds: 4.2,
+          position: 0,
+          lane: 1,
+          color: "#1E88E5", // Blue
+          type: "standard",
+          sponsorValue: 0
+        },
+        { 
+          id: 3, 
+          name: "Golden Hoof", 
+          baseSpeed: 7.5, 
+          acceleration: 0.85, 
+          stamina: 0.95, 
+          odds: 5.0,
+          position: 0,
+          lane: 2,
+          color: "#FDD835", // Yellow
+          type: "standard",
+          sponsorValue: 0
+        },
+        { 
+          id: 4, 
+          name: "Night Fury", 
+          baseSpeed: 7.9, 
+          acceleration: 0.75, 
+          Stamina: 0.9, 
+          odds: 6.5,
+          position: 0,
+          lane: 3,
+          color: "#5E35B1", // Purple
+          type: "standard",
+          sponsorValue: 0
+        },
+        { 
+          id: 5, 
+          name: "Lucky Charm", 
+          baseSpeed: 7.2, 
+          acceleration: 0.95, 
+          Stamina: 0.8, 
+          odds: 7.0,
+          position: 0,
+          lane: 4,
+          color: "#43A047", // Green
+          type: "standard",
+          sponsorValue: 0
+        },
+        { 
+          id: 6, 
+          name: "Blazing Hooves", 
+          baseSpeed: 7.7, 
+          acceleration: 0.85, 
+          stamina: 0.85, 
+          odds: 5.5,
+          position: 0,
+          lane: 5,
+          color: "#FB8C00", // Orange
+          type: "standard",
+          sponsorValue: 0
+        },
+        { 
+          id: 7, 
+          name: "Shadow Runner", 
+          baseSpeed: 8.2, 
+          acceleration: 0.7, 
+          Stamina: 0.8, 
+          odds: 7.5,
+          position: 0,
+          lane: 6,
+          color: "#212121", // Black
+          type: "standard",
+          sponsorValue: 0
+        },
+        { 
+          id: 8, 
+          name: "Underdog", 
+          baseSpeed: 6.5, 
+          acceleration: 1.0, 
+          Stamina: 1.0, 
+          odds: 15.0,
+          position: 0,
+          lane: 7,
+          color: "#8D6E63", // Brown
+          type: "longshot",
+          sponsorValue: 0
+        }
+      ],
+      marketData: {
+        s_and_p: {
+          current: 5280,
+          history: [5250, 5260, 5275, 5280],
+          trend: "up"
+        },
+        cryptoCoins: [
+          { name: "BitGold", price: 65000, change: 2.5 },
+          { name: "Etherhoof", price: 3500, change: -1.2 },
+          { name: "HorseCoin", price: 250, change: 5.7 },
+          { name: "StableTrot", price: 1, change: 0 }
+        ]
+      }
+    };
+
+    // 3D rendering properties
+    this.scene = null;
+    this.camera = null;
+    this.renderer = null;
+    this.controls = null;
+    this.horseModels = [];
+    this.trackModel = null;
+    this.container = null;
+    
+    // Animation timing
+    this.clock = new THREE.Clock();
+    this.lastTime = 0;
+  }
+
+  // Initialize the game
+  init(containerElement) {
+    // Store container reference
+    this.container = containerElement;
+    
+    // Set up 3D scene
+    this.setupScene();
+    
+    // Load assets (horse models, track, etc.)
+    this.loadAssets();
+    
+    // Set up event listeners
+    this.setupEventListeners();
+    
+    // Start animation loop
+    this.animate();
+  }
+  
+  // Set up the 3D scene, camera, renderer, etc.
+  setupScene() {
+    // Create scene
+    this.scene = new THREE.Scene();
+    This scene.background = new THREE.Color(0x87CEEB); // Sky blue
+    
+    // Create camera
+    this.camera = new THREE.PerspectiveCamera(
+      75, 
+      This.Container.clientWidth / this.container.clientHeight, 
+      0.1, 
+      2000
+    );
+    this.camera.position.set(0, 150, 400);
+    
+    // Create renderer
+    this.renderer = new THREE.WebGLRenderer({ antialias: true });
+    this.renderer.setSize(this.container.clientWidth, this.container.clientHeight);
+    This.Renderer.shadowMap.enabled = true;
+    this.container.appendChild(this.renderer.domElement);
+    
+    // Add camera controls
+    this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+    this.controls.enablePan = true;
+    this.controls.enableZoom = true;
+    this.controls.minDistance = 100;
+    this.controls.maxDistance = 1000;
+    
+    // Add lights
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    This. Scene.add(ambientLight);
+    
+    Const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    directionalLight.position.set(100, 300, 100);
+    directionalLight.castShadow = true;
+    directionalLight.shadow.mapSize.width = 2048;
+    directionalLight.shadow.mapSize.height = 2048;
+    This. camera.add(directionalLight);
+    
+    // Handle window resize
+    window.addEventListener('resize', () => {
+      this. Camera.aspect = this.container.clientWidth / this.container.clientHeight;
+      this. Camera.updateProjectionMatrix();
+      this.renderer.setSize(this.container.clientWidth, this.container.clientHeight);
+    });
+  }
+  
+  // Load 3D models and other assets
+  loadAssets() {
+    // Create the track
+    this.createTrack();
+    
+    // Load horse models
+    const loader = new GLTFLoader();
+    
+    // For now, use simple geometries for horses
+    // In a real implementation, you'd load detailed models
+    This.state.horses.forEach(horse => {
+      const horseGeometry = new THREE.BoxGeometry(20, 20, 40);
+      const horseMaterial = new THREE.MeshLambertMaterial({ color: horse.color });
+      const horseModel = new THREE.Mesh(horseGeometry, horseMaterial);
+      
+      // Position horse at starting line in its lane
+      horseModel.position.x = (horse.lane - (this.config.numLanes - 1) / 2) * this.config.laneWidth;
+      horseModel.position.y = 10;
+      horseModel.position.z = -this.config.raceLength / 2;
+      
+      // Add to scene and store reference
+      this.Scene.add(horseModel);
+      this.horseModels[horse.id] = horseModel;
+    });
+  }
+  
+  // Create the race track
+  createTrack() {
+    // Ground plane
+    const groundGeometry = new THREE.PlaneGeometry(
+      this.config.laneWidth * this.config.numLanes * 1.5, 
+      this.config.raceLength * 1.2
+    );
+    const groundMaterial = new THREE.MeshLambertMaterial({ 
+      color: 0x7CFC00, // Grass green
+      side: THREE.DoubleSide 
+    });
+    const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+    ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
+    this.scene.add(ground);
+    
+    // Track surface
+    const trackGeometry = new THREE.PlaneGeometry(
+      this.config.laneWidth * this.config.numLanes, 
+      this.config.raceLength
+    );
+    Const trackMaterial = new THREE.MeshLambertMaterial({ 
+      color: 0xBDB76B, // Dirt color
+      side: THREE.DoubleSide 
+    });
+    const track = new THREE.Mesh(trackGeometry, trackMaterial);
+    track.rotation.x = -Math.PI / 2;
+    track.position.y = 0.1; // Slightly above ground
+    track.receiveShadow = true;
+    this.scene.add(track);
+    
+    // Lane dividers
+    for (let i = 0; i <= this.config.numLanes; i++) {
+      const x = (i - this.config.numLanes / 2) * this.config.laneWidth;
+      
+      const dividerGeometry = new THREE.BoxGeometry(2, 1, this.config.raceLength);
+      const dividerMaterial = new THREE.MeshLambertMaterial({ color: 0xFFFFFF });
+      const divider = new THREE.Mesh(dividerGeometry, dividerMaterial);
+      
+      divider.position.x = x;
+      divider.position.y = 0.2;
+      This scene.add(divider);
+    }
+    
+    // Start line
+    const startLineGeometry = new THREE.BoxGeometry(
+      this.config.laneWidth * this.config.numLanes, 
+      1, 
+      5
+    );
+    Const startLineMaterial = new THREE.MeshLambertMaterial({ color: 0xFFFFFF });
+    const startLine = new THREE.Mesh(startLineGeometry, startLineMaterial);
+    startLine.position.y = 0.2;
+    startLine.position.z = -this.config.raceLength / 2;
+    This cene.add(startLine);
+    
+    // Finish line
+    const finishLineGeometry = new THREE.BoxGeometry(
+      this.config.laneWidth * this.config.numLanes, 
+      1, 
+      5
+    );
+    Const finishLineMaterial = new THREE.MeshLambertMaterial({ 
+      color: 0xFFFFFF,
+      transparent: true,
+      opacity: 0.8 
+    });
+    
+    // Create checkered pattern for finish line
+    const checkSize = 10;
+    const finishTexture = new THREE.CanvasTexture(
+      this.createCheckerPattern(
+        this.config.laneWidth * this.config.numLanes, 
+        5, 
+        checkSize
+      )
+    );
+    finishLineMaterial.map = finishTexture;
+    
+    Const finishLine = new THREE.Mesh(finishLineGeometry, finishLineMaterial);
+    finishLine.position.y = 0.2;
+    finishLine.position.z = this.config.raceLength / 2 - 5;
+    This. Scene.add(finishLine);
+    
+    // Add spectator stands
+    to this.createSpectatorStands();
+  }
+  
+  // Create a checker pattern canvas for the finish line
+  createCheckerPattern(width, height, checkSize) {
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = 'white';
+    ctx.fillRect(0, 0, width, height);
+    
+    ctx.fillStyle = 'black';
+    let toggle = false;
+    
+    for (let x = 0; x < width; x += checkSize) {
+      toggle = !toggle;
+      for (let y = 0; y < height; y += checkSize) {
+        if (toggle) {
+          ctx.fillRect(x, y, checkSize, checkSize);
+        }
+        toggle = !toggle;
+      }
+    }
+    
+    return canvas;
+  }
+  
+  // Create spectator stands
+  createSpectatorStands() {
+    // Left-side stands
+    const leftStandGeometry = new THREE.BoxGeometry(
+      50, 
+      30, 
+      this.config.raceLength * 0.6
+    );
+    const standMaterial = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
+    const leftStand = new THREE.Mesh(leftStandGeometry, standMaterial);
+    
+    leftStand.position.x = -this.config.laneWidth * this.config.numLanes / 2 - 40;
+    leftStand.position.y = 15;
+    This. Scene.add(leftStand);
+    
+    // Right-side stands
+    const rightStandGeometry = new THREE.BoxGeometry(
+      50, 
+      30, 
+      this.config.raceLength * 0.6
+    );
+    const rightStand = new THREE.Mesh(rightStandGeometry, standMaterial);
+    
+    rightStand.position.x = this.config.laneWidth * this.config.numLanes / 2 + 40;
+    rightStand.position.y = 15;
+    This. Scene.add(rightStand);
+    
+    // Add simple crowd
+    this.addCrowd(leftStand, 20, 40);
+    this.addCrowd(rightStand, 20, 40);
+  }
+  
+  // Add simple crowd representation
+  addCrowd(stand, numRows, peoplePerRow) {
+    const crowdGroup = new THREE.Group();
+    
+    for (let i = 0; i < numRows; i++) {
+      for (let j = 0; j < peoplePerRow; j++) {
+        // Simple person representation
+        const headGeometry = new THREE.SphereGeometry(1, 8, 8);
+        const bodyGeometry = new THREE.BoxGeometry(1, 2, 1);
+        
+        // Random colors for variety
+        const color = new THREE.Color(
+          0.5 + Math.random() * 0.5,
+          0.5 + Math.random() * 0.5,
+          0.5 + Math.random() * 0.5
+        );
+        
+        const personMaterial = new THREE.MeshLambertMaterial({ color });
+        
+        const head = new THREE.Mesh(headGeometry, personMaterial);
+        const body = new THREE.Mesh(bodyGeometry, personMaterial);
+        
+        Head.position.y = 1.5;
+        
+        const person = new THREE.Group();
+        person.add(head);
+        person.add(body);
+        
+        // Position within stand
+        person. Position.x = (j - peoplePerRow / 2) * 2;
+        person.position.y = stand.position.y + 15 + i * 2;
+        person.position.z = (Math.random() - 0.5) * stand.geometry.parameters.depth * 0.8;
+        
+        crowdGroup.add(person);
+      }
+    }
+    
+    this.scene.add(crowdGroup);
+  }
+  
+  // Set up event listeners for user interactions
+  setupEventListeners() {
+    // Events would be handled by React components in the actual implementation
+  }
+  
+  // Animation loop
+  animate() {
+    requestAnimationFrame(() => this.animate());
+    
+    Const currentTime = this.clock.getElapsedTime();
+    const deltaTime = currentTime - this.lastTime;
+    this.lastTime = currentTime;
+    
+    // Update race progress if race is active
+    if (this.state.isRaceActive && !this.state.isRaceFinished) {
+      this.updateRace(deltaTime);
+    }
+    
+    // Update controls
+    this.controls.update();
+    
+    // Render scene
+    this.renderer.render(this.scene, this.camera);
+  }
+  
+  // Update race progress
+  updateRace(deltaTime) {
+    let finishedHorses = 0;
+    const finishLine = this.config.raceLength / 2 - 5;
+    
+    This.state.horses.forEach(horse => {
+      if (horse.position >= finishLine) {
+        finishedHorses++;
+        return;
+      }
+      
+      // Calculate horse's speed based on its stats, position in race, and random factors
+      let speed = horse.baseSpeed;
+      
+      // Adjust speed based on position in race
+      const raceProgress = horse.position / finishLine;
+      
+      // Start phase (acceleration)
+      if (raceProgress < 0.2) {
+        speed *= 0.8 + horse.acceleration * 0.4 * (raceProgress * 5);
+      } 
+      // Middle phase (maintaining speed)
+      else if (raceProgress < 0.7) {
+        speed *= 0.9 + horse.stamina * 0.2;
+      } 
+      // Final phase (sprint or fatigue)
+      else {
+        const staminaFactor = horse.stamina - (1 - horse.stamina) * (raceProgress - 0.7) * 3;
+        speed *= 0.8 + staminaFactor * 0.4;
+      }
+      
+      // Add random variation
+      speed *= 0.9 + Math.random() * 0.2;
+      
+      // Move horse based on speed and delta time
+      horse.position += speed * deltaTime * 50;
+      
+      // Apply market effects if enabled
+      if (this.config.marketInfluence) {
+        const marketEffect = this.calculateMarketEffect(horse);
+        horse.position += marketEffect * deltaTime * 10;
+      }
+      
+      // Update 3D model position
+      if (this.horseModels[horse.id]) {
+        this.horseModels[horse.id].position.z = -finishLine + horse.position;
+      }
+    });
+    
+    // Check if race is finished (all horses crossed finish line)
+    if (finishedHorses === this.state.horses.length) {
+      this.finishRace();
+    }
+  }
+  
+  // Calculate market influence on horse performance
+  calculateMarketEffect(horse) {
+    // In a real implementation, you would tie this to actual market data
+    // and sponsorship values, but here's a simple example:
+    
+    // If the horse is sponsored, its performance is affected by the market
+    if (horse.sponsorValue > 0) {
+      // Get related market data
+      const marketData = this.state.marketData;
+      
+      // Example: S&P 500 trend affects "favorite" type horses
+      if (horse.type === "favorite" && marketData.s_and_p.trend === "up") {
+        return 0.5; // Positive boost
+      }
+      
+      // Example: Crypto coin performance affects "longshot" horses
+      if (horse.type === "longshot") {
+        const relevantCoin = marketData.cryptoCoins.find(c => c.name === "HorseCoin");
+        if (relevantCoin && relevantCoin.change > 0) {
+          return relevantCoin.change / 10; // Positive boost based on % change
+        }
+      }
+    }
+    
+    return 0; // No effect
+  }
+  
+  // Finish the race and process results
+  finishRace() {
+    This. state.isRaceActive = false;
+    This. state.isRaceFinished = true;
+    
+    // Sort horses by position to determine finishing order
+    const finishedHorses = [...this.state.horses]
+      .sort((a, b) => b.position - a.position);
+    
+    // Store race results
+    const raceResults = {
+      id: this.state.raceHistory.length + 1,
+      date: new Date(),
+      results: finishedHorses.map((horse, index) => ({
+        position: index + 1,
+        horseId: horse.id,
+        horseName: horse.name
+      }))
+    };
+    
+    this.state.raceHistory.push(raceResults);
+    
+    // Process bets and update coins
+    .processBets(finishedHorses);
+    
+    // Notify of race completion
+    console.log("Race finished!", raceResults);
+    
+    // In a real implementation, you would trigger UI updates here
+  }
+  
+  // Process bets after race completion
+  processBets(finishedHorses) {
+    // Get the IDs of the top three horses
+    const firstPlaceId = finishedHorses[0].id;
+    const secondPlaceId = finishedHorses[1].id;
+    const thirdPlaceId = finishedHorses[2].id;
+    
+    // Process each bet
+    this.state.currentBets.forEach(bet => {
+      let won = false;
+      let payout = 0;
+      
+      // Get the horse's type for payout calculation
+      const horse = this.state.horses.find(h => h.id === bet.horseId);
+      const horseType = horse ? horse.type: "standard";
+      
+      // Check if bet won based on bet type
+      switch (bet.type) {
+        case "win":
+          if (bet.horseId === firstPlaceId) {
+            won = true;
+            payout = bet.amount * this.config.payoutMultipliers.win[horseType];
+          }
+          break;
+          
+        cCase"place":
+          if (bet.horseId === firstPlaceId || bet.horseId === secondPlaceId) {
+            won = true;
+            payout = bet.amount * this.config.payoutMultipliers.place[horseType];
+          }
+          break;
+          
+        Case "show":
+          If (bet.horseId === firstPlaceId || 
+              bet.horseId === secondPlaceId || 
+              bet.horseId === thirdPlaceId) {
+            won = true;
+            payout = bet.amount * this.config.payoutMultipliers.show[horseType];
+          }
+          break;
+      }
+      
+      // Update coins if bet won
+      if (won) {
+        this. State.coins += payout;
+        console.log(`Won ${payout} coins on ${bet.type} bet for horse ${bet.horseId}!`);
+      }
+    });
+    
+    // Clear current bets
+    this .state.currentBets = [];
+  }
+  
+  // Place a bet
+  placeBet(horseId, amount, type) {
+    // Validate bet
+    if (amount <= 0 || amount > this.state.coins) {
+      console.error("Invalid bet amount");
+      return false;
+    }
+    
+    if (amount < this.config.minBet || amount > this.config.maxBet) {
+      console.error(`Bet must be between ${this.config.minBet} and ${this.config.maxBet} coins`);
+      return false;
+    }
+    
+    // Deduct coins
+    this s.state.coins -= amount;
+    
+    // Add bet to current bets
+    this.state.currentBets.push({
+endregion'node <your-server-file>.javascript.js~
+//{ "Crypto Classic" }
+//Sample betting game users can place bets on horses.
+'const track = {
+  'width: 1000,
+  'height;: 500,~  Horses: 
+    { name: Horse = "Lucky", number: 1 },
+    { name: Horse = "Shiny Shoes", number: 2 },
+    { name: Horse =  "Clutch", number: 3 },
+    { name: Horse = "Stingray", number: 4 },
+    { name: Horse  = "Big Deal", number: 5 },
+    { name: Horse = "King", number: 6 },
+    { name: Horse = "Mimi", number: 7 },
+    { name: Horse =  "Lil Sister", number: 8 }
+    ],
+};
+
+// Jumbotron
+const jumbotron = {Sponsorship: "Crypto Classic", track: track };
+  horses: track.horses.map((horse) => (
+    `<div key=${horse.number}>${horse.name} (${horse.number})</div>`
+  )),
+  coins: 100,
+  update: () => {
+    console.log("Coins updated");
+  }
+};
+
+// Coin Betting
+const betting = {
+  horses: track.horses,
+  bets: {},
+  update: (bet) => {
+    console.log("Bet updated");
+  }
+};
+
+// Connect Wallet
+const wallet = {
+  connect: () => {
+    console.log("Wallet connected");
+  },
+  deposit: (coins) => {
+    console.log(`Deposited ${coins} coins`);
+  }
+};
+
+// Place Wager
+const wager = {
+  horse: null,
+  amount: null,
+  place: null,
+  update: (bet) => {
+    console.log("Wager updated");
+  }
+};
+
+// Sponsorship
+const sponsorship = {
+  horse: null,
+  amount: null,
+  update: (bet) => {
+    console.log("Sponsorship updated");
+  }
+};
+
+// S&P500
+const sp500 = {
+  page: null,
+  update: () => {
+    console.log("S&P500 updated");
+  }
+};
+
+// Magic Touches
+const magic = {
+  countdown: 10,
+  start: () => {
+    console.log("Countdown started");
+  },
+  end: () => {
+    console.log("Countdown ended");
+  }
+};//  //  
+// // Crypto Classic
+// // 
+// //// index.js - Main Game Controller
+import React, { useState, useEffect, useRef } from 'react';
+import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
+import { Horse, Track, Betting, Jumbotron, Wallet, MarketData } from './components';
+
+// Game class to manage the entire horse racing game
+class HorseRacingGame {Crypto Classic
+  constructor() {
+    // Game configuration
+    this.config = {
+      raceLength: 1000,  // Length of race track in units
+      laneWidth: 80,     // Width of each lane
+      numLanes: 8,       // Number of lanes/horses
+      coinValue: 10,     // Default coin value in USD
+      initialCoins: 100, // Starting coins for player
+      minBet: 1,         // Minimum bet amount
+      maxBet: 50,        // Maximum bet amount
+      payoutMultipliers: {
+        win: { // Horse finishes 1st
+          standard: 5,
+          favorite: 3,
+          longshot: 10
+        },
+        place: { // Horse finishes 1st or 2nd
+          standard: 2,
+          favorite: 1.5,
+          longshot: 4
+        },
+        show: { // Horse finishes 1st, 2nd, or 3rd
+          standard: 1.5,
+          favorite: 1.2,
+          longshot: 2.5
+        }
+      }
+    };
+
+    // Game state
+    this.state = {
+      isRaceActive: false,
+      isRaceFinished: false,
+      coins: this.configuration.initialCoins,
+      currentBets: [],
+      raceHistory: [],
+      horses: [
+        { 
+          id: 1, 
+          name: "Thunder Bolt", 
+          baseSpeed: 8, 
+          acceleration: 0.8, 
+          stamina: 0.9, 
+          odds: 3.5,
+          position: 0,
+          lane: 0,
+          color: "#E53935", // Red
+          type: "favorite",
+          sponsorValue: 0
+        },
+        { 
+          id: 2, 
+          name: "Silver Arrow", 
+          baseSpeed: 7.8, 
+          acceleration: 0.9, 
+          stamina: 0.85, 
+          odds: 4.2,
+          position: 0,
+          lane: 1,
+          color: "#1E88E5", // Blue
+          type: "standard",
+          sponsorValue: 0
+        },
+        { 
+          id: 3, 
+          name: "Golden Hoof", 
+          baseSpeed: 7.5, 
+          acceleration: 0.85, 
+          stamina: 0.95, 
+          odds: 5.0,
+          position: 0,
+          lane: 2,
+          color: "#FDD835", // Yellow
+          type: "standard",
+          sponsorValue: 0
+        },
+        { 
+          id: 4, 
+          name: "Night Fury", 
+          baseSpeed: 7.9, 
+          acceleration: 0.75, 
+          stamina: 0.9, 
+          odds: 6.5,
+          position: 0,
+          lane: 3,
+          color: "#5E35B1", // Purple
+          type: "standard",
+          sponsorValue: 0
+        },
+        { 
+          id: 5, 
+          name: "Lucky Charm", 
+          baseSpeed: 7.2, 
+          acceleration: 0.95, 
+          stamina: 0.8, 
+          odds: 7.0,
+          position: 0,
+          lane: 4,
+          color: "#43A047", // Green
+          type: "standard",
+          sponsorValue: 0
+        },
+        { 
+          id: 6, 
+          name: "Blazing Hooves", 
+          baseSpeed: 7.7, 
+          acceleration: 0.85, 
+          stamina: 0.85, 
+          odds: 5.5,
+          position: 0,
+          lane: 5,
+          color: "#FB8C00", // Orange
+          type: "standard",
+          sponsorValue: 0
+        },
+        { 
+          id: 7, 
+          name: "Shadow Runner", 
+          baseSpeed: 8.2, 
+          acceleration: 0.7, 
+          stamina: 0.8, 
+          odds: 7.5,
+          position: 0,
+          lane: 6,
+          color: "#212121", // Black
+          type: "standard",
+          sponsorValue: 0
+        },
+        { 
+          id: 8, 
+          name: "Underdog", 
+          baseSpeed: 6.5, 
+          acceleration: 1.0, 
+          stamina: 1.0, 
+          odds: 15.0,
+          position: 0,
+          lane: 7,
+          color: "#8D6E63", // Brown
+          type: "longshot",
+          sponsorValue: 0
+        }
+      ],
+      marketData: {
+        s_and_p: {
+          current: 5280,
+          history: [5250, 5260, 5275, 5280],
+          trend: "up"
+        },
+        cryptoCoins: [
+          { name: "BitGold", price: 65000, change: 2.5 },
+          { name: "Etherhoof", price: 3500, change: -1.2 },
+          { name: "HorseCoin", price: 250, change: 5.7 },
+          { name: "StableTrot", price: 1, change: 0 }
+        ]
+      }
+    };
+
+    // 3D rendering properties
+    this.scene = null;
+    this.camera = null;
+    this.renderer = null;
+    this.controls = null;
+    this.horseModels = [];
+    this.trackModel = null;
+    this.container = null;
+
+    // Animation timing
+    this.clock = new THREE.Clock();
+    this.lastTime = 0;
+  }
+
+  // Initialize the game
+  init(containerElement) {
+    // Store container reference
+    this.container = containerElement;
+
+    // Set up 3D scene
+    this.setupScene();
+
+    // Load assets (horse models, track, etc.)
+    this.loadAssets();
+
+    // Set up event listeners
+    this.setupEventListeners();
+
+    // Start animation loop
+    this.animate();
+  }
+
+  // Set up the 3D scene, camera, renderer, etc.
+  setupScene() {
+    // Create scene
+    this.scene = new THREE.Scene();
+    this.scene.background = new THREE.Color(0x87CEEB); // Sky blue
+
+    // Create camera
+    this.camera = new THREE.PerspectiveCamera(
+      75, 
+      this.container.clientWidth / this.container.clientHeight, 
+      0.1, 
+      2000
+    );
+    this.camera.position.set(0, 150, 400);
+
+    // Create renderer
+    this.renderer = new THREE.WebGLRenderer({ antialias: true });
+    this.renderer.setSize(this.container.clientWidth, this.container.clientHeight);
+    this.renderer.shadowMap.enabled = true;
+    this.container.appendChild(this.renderer.domElement);
+
+    // Add camera controls
+    this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+    this.controls.enablePan = true;
+    this.controls.enableZoom = true;
+    this.controls.minDistance = 100;
+    this.controls.maxDistance = 1000;
+
+    // Add lights
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    this.scene.add(ambientLight);
+
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    directionalLight.position.set(100, 300, 100);
+    directionalLight.castShadow = true;
+    directionalLight.shadow.mapSize.width = 2048;
+    directionalLight.shadow.mapSize.height = 2048;
+    this.scene.add(directionalLight);
+
+    // Handle window resize
+    window.addEventListener('resize', () => {
+      this.camera.aspect = this.container.clientWidth / this.container.clientHeight;
+      this.camera.updateProjectionMatrix();
+      this.renderer.setSize(this.container.clientWidth, this.container.clientHeight);
+    });
+  }
+
+  // Load 3D models and other assets
+  loadAssets() {
+    // Create the track
+    this.createTrack();
+
+    // Load horse models
+    const loader = new GLTFLoader();
+
+    // For now, use simple geometries for horses
+    // In a real implementation, you'd load detailed models
+    this.state.horses.forEach(horse => {
+      const horseGeometry = new THREE.BoxGeometry(20, 20, 40);
+      const horseMaterial = new THREE.MeshLambertMaterial({ color: horse.color });
+      const horseModel = new THREE.Mesh(horseGeometry, horseMaterial);
+
+      // Position horse at starting line in its lane
+      horseModel.position.x = (horse.lane - (this.config.numLanes - 1) / 2) * this.config.laneWidth;
+      horseModel.position.y = 10;
+      horseModel.position.z = -this.config.raceLength / 2;
+
+      // Add to scene and store reference
+      this.scene.add(horseModel);
+      this.horseModels[horse.id] = horseModel;
+    });
+  }
+
+  // Create the race track
+  createTrack() {
+    // Ground plane
+    const groundGeometry = new THREE.PlaneGeometry(
+      this.config.laneWidth * this.config.numLanes * 1.5, 
+      this.config.raceLength * 1.2
+    );
+    const groundMaterial = new THREE.MeshLambertMaterial({ 
+      color: 0x7CFC00, // Grass green
+      side: THREE.DoubleSide 
+    });
+    const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+    ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
+    this.scene.add(ground);
+
+    // Track surface
+    const trackGeometry = new THREE.PlaneGeometry(
+      this.config.laneWidth * this.config.numLanes, 
+      this.config.raceLength
+    );
+    const trackMaterial = new THREE.MeshLambertMaterial({ 
+      color: 0xBDB76B, // Dirt color
+      side: THREE.DoubleSide 
+    });
+    const track = new THREE.Mesh(trackGeometry, trackMaterial);
+    track.rotation.x = -Math.PI / 2;
+    track.position.y = 0.1; // Slightly above ground
+    track.receiveShadow = true;
+    this.scene.add(track);
+
+    // Lane dividers
+    for (let i = 0; i <= this.config.numLanes; i++) {
+      const x = (i - this.config.numLanes / 2) * this.config.laneWidth;
+
+      const dividerGeometry = new THREE.BoxGeometry(2, 1, this.config.raceLength);
+      const dividerMaterial = new THREE.MeshLambertMaterial({ color: 0xFFFFFF });
+      const divider = new THREE.Mesh(dividerGeometry, dividerMaterial);
+
+      divider.position.x = x;
+      divider.position.y = 0.2;
+      this.scene.add(divider);
+    }
+
+    // Start line
+    const startLineGeometry = new THREE.BoxGeometry(
+      this.config.laneWidth * this.config.numLanes, 
+      1, 
+      5
+    );
+    const startLineMaterial = new THREE.MeshLambertMaterial({ color: 0xFFFFFF });
+    const startLine = new THREE.Mesh(startLineGeometry, startLineMaterial);
+    startLine.position.y = 0.2;
+    startLine.position.z = -this.config.raceLength / 2;
+    this.scene.add(startLine);
+
+    // Finish line
+    const finishLineGeometry = new THREE.BoxGeometry(
+      this.config.laneWidth * this.config.numLanes, 
+      1, 
+      5
+    );
+    const finishLineMaterial = new THREE.MeshLambertMaterial({ 
+      color: 0xFFFFFF,
+      transparent: true,
+      opacity: 0.8 
+    });
+
+    // Create checkered pattern for finish line
+    const checkSize = 10;
+    const finishTexture = new THREE.CanvasTexture(
+      this.createCheckerPattern(
+        this.config.laneWidth * this.config.numLanes, 
+        5, 
+        checkSize
+      )
+    );
+    finishLineMaterial.map = finishTexture;
+
+    const finishLine = new THREE.Mesh(finishLineGeometry, finishLineMaterial);
+    finishLine.position.y = 0.2;
+    finishLine.position.z = this.config.raceLength / 2 - 5;
+    this.scene.add(finishLine);
+
+    // Add spectator stands
+    this.createSpectatorStands();
+  }
+
+  // Create a checker pattern canvas for the finish line
+  createCheckerPattern(width, height, checkSize) {
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = 'white';
+    ctx.fillRect(0, 0, width, height);
+
+    ctx.fillStyle = 'black';
+    let toggle = false;
+
+    for (let x = 0; x < width; x += checkSize) {
+      toggle = !toggle;
+      for (let y = 0; y < height; y += checkSize) {
+        if (toggle) {
+          ctx.fillRect(x, y, checkSize, checkSize);
+        }
+        toggle = !toggle;
+      }
+    }
+
+    return canvas;
+  }
+
+  // Create spectator stands
+  createSpectatorStands() {
+    // Left-side stands
+    const leftStandGeometry = new THREE.BoxGeometry(
+      50, 
+      30, 
+      this.config.raceLength * 0.6
+    );
+    const standMaterial = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
+    const leftStand = new THREE.Mesh(leftStandGeometry, standMaterial);
+
+    leftStand.position.x = -this.config.laneWidth * this.config.numLanes / 2 - 40;
+    leftStand.position.y = 15;
+    this.scene.add(leftStand);
+
+    // Right-side stands
+    const rightStandGeometry = new THREE.BoxGeometry(
+      50, 
+      30, 
+      this.config.raceLength * 0.6
+    );
+    const rightStand = new THREE.Mesh(rightStandGeometry, standMaterial);
+
+    rightStand.position.x = this.config.laneWidth * this.config.numLanes / 2 + 40;
+    rightStand.position.y = 15;
+    this.scene.add(rightStand);
+
+    // Add simple crowd
+    this.addCrowd(leftStand, 20, 40);
+    this.addCrowd(rightStand, 20, 40);
+  }
+
+  // Add simple crowd representation
+  addCrowd(stand, numRows, peoplePerRow) {
+    const crowdGroup = new THREE.Group();
+
+    for (let i = 0; i < numRows; i++) {
+      for (let j = 0; j < peoplePerRow; j++) {
+        // Simple person representation
+        const headGeometry = new THREE.SphereGeometry(1, 8, 8);
+        const bodyGeometry = new THREE.BoxGeometry(1, 2, 1);
+
+        // Random colors for variety
+        const color = new THREE.Color(
+          0.5 + Math.random() * 0.5,
+          0.5 + Math.random() * 0.5,
+          0.5 + Math.random() * 0.5
+        );
+
+        const personMaterial = new THREE.MeshLambertMaterial({ color });
+
+        const head = new THREE.Mesh(headGeometry, personMaterial);
+        const body = new THREE.Mesh(bodyGeometry, personMaterial);
+
+        head.position.y = 1.5;
+
+        const person = new THREE.Group();
+        person.add(head);
+        person.add(body);
+
+        // Position within stand
+        person.position.x = (j - peoplePerRow / 2) * 2;
+        person.position.y = stand.position.y + 15 + i * 2;
+        person.position.z = (Math.random() - 0.5) * stand.geometry.parameters.depth * 0.8;
+
+        crowdGroup.add(person);
+      }
+    }
+
+    this.scene.add(crowdGroup);
+  }
+
+  // Set up event listeners for user interactions
+  setupEventListeners() {
+    // Events would be handled by React components in the actual implementation
+  }
+
+  // Animation loop
+  animate() {
+    requestAnimationFrame(() => this.animate());
+
+    const currentTime = this.clock.getElapsedTime();
+    const deltaTime = currentTime - this.lastTime;
+    this.lastTime = currentTime;
+
+    // Update race progress if race is active
+    if (this.state.isRaceActive && !this.state.isRaceFinished) {
+      this.updateRace(deltaTime);
+    }
+
+    // Update controls
+    this.controls.update();
+
+    // Render scene
+    this.renderer.render(this.scene, this.camera);
+  }
+
+  // Update race progress
+  updateRace(deltaTime) {
+    let finishedHorses = 0;
+    const finishLine = this.config.raceLength / 2 - 5;
+
+    this.state.horses.forEach(horse => {
+      if (horse.position >= finishLine) {
+        finishedHorses++;
+        return;
+      }
+
+      // Calculate horse's speed based on its stats, position in race, and random factors
+      let speed = horse.baseSpeed;
+
+      // Adjust speed based on position in race
+      const raceProgress = horse.position / finishLine;
+
+      // Start phase (acceleration)
+      if (raceProgress < 0.2) {
+        speed *= 0.8 + horse.acceleration * 0.4 * (raceProgress * 5);
+      } 
+      // Middle phase (maintaining speed)
+      else if (raceProgress < 0.7) {
+        speed *= 0.9 + horse.stamina * 0.2;
+      } 
+      // Final phase (sprint or fatigue)
+      else {
+        const staminaFactor = horse.stamina - (1 - horse.stamina) * (raceProgress - 0.7) * 3;
+        speed *= 0.8 + staminaFactor * 0.4;
+      }
+
+      // Add random variation
+      speed *= 0.9 + Math.random() * 0.2;
+
+      // Move horse based on speed and delta time
+      horse.position += speed * deltaTime * 50;
+
+      // Apply market effects if enabled
+      if (this.config.marketInfluence) {
+        const marketEffect = this.calculateMarketEffect(horse);
+        horse.position += marketEffect * deltaTime * 10;
+      }
+
+      // Update 3D model position
+      if (this.horseModels[horse.id]) {
+        this.horseModels[horse.id].position.z = -finishLine + horse.position;
+      }
+    });
+
+    // Check if race is finished (all horses crossed finish line)
+    if (finishedHorses === this.state.horses.length) {
+      this.finishRace();
+    }
+  }
+
+  // Calculate market influence on horse performance
+  calculateMarketEffect(horse) {
+    // In a real implementation, you would tie this to actual market data
+    // and sponsorship values, but here's a simple example:
+
+    // If the horse is sponsored, its performance is affected by the market
+    if (horse.sponsorValue > 0) {
+      // Get related market data
+      const marketData = this.state.marketData;
+
+      // Example: S&P 500 trend affects "favorite" type horses
+      if (horse.type === "favorite" && marketData.s_and_p.trend === "up") {
+        return 0.5; // Positive boost
+      }
+
+      // Example: Crypto coin performance affects "longshot" horses
+      if (horse.type === "longshot") {
+        const relevantCoin = marketData.cryptoCoins.find(c => c.name === "HorseCoin");
+        if (relevantCoin && relevantCoin.change > 0) {
+          return relevantCoin.change / 10; // Positive boost based on % change
+        }
+      }
+    }
+
+    return 0; // No effect
+  }
+
+  // Finish the race and process results
+  finishRace() {
+    this.state.isRaceActive = false;
+    this.state.isRaceFinished = true;
+
+    // Sort horses by position to determine finishing order
+    const finishedHorses = [...this.state.horses]
+      .sort((a, b) => b.position - a.position);
+
+    // Store race results
+    const raceResults = {
+      id: this.state.raceHistory.length + 1,
+      date: new Date(),
+      results: finishedHorses.map((horse, index) => ({
+        position: index + 1,
+        horseId: horse.id,
+        horseName: horse.name
+      }))
+    };
+
+    this.state.raceHistory.push(raceResults);
+
+    // Process bets and update coins
+    this.processBets(finishedHorses);
+
+    // Notify of race completion
+    console.log("Race finished!", raceResults);
+
+    // In a real implementation, you would trigger UI updates here
+  }
+
+  // Process bets after race completion
+  processBets(finishedHorses) {
+    // Get the IDs of the top three horses
+    const firstPlaceId = finishedHorses[0].id;
+    const secondPlaceId = finishedHorses[1].id;
+    const thirdPlaceId = finishedHorses[2].id;
+
+    // Process each bet
+    this.state.currentBets.forEach(bet => {
+      let won = false;
+      let payout = 0;
+
+      // Get the horse's type for payout calculation
+      const horse = this.state.horses.find(h => h.id === bet.horseId);
+      const horseType = horse ? horse.type : "standard";
+
+      // Check if bet won based on bet type
+      switch (bet.type) {
+        case "win":
+          if (bet.horseId === firstPlaceId) {
+            won = true;
+            payout = bet.amount * this.config.payoutMultipliers.win[horseType];
+endregion'node <your-server-file>.javascript.js~
+//{ "Crypto Classic" }
+//Sample betting game users can place bets on horses.
+'const track = {
+  'width: 1000,
+  'height;: 500,~  Horses: 
+    { name: Horse = "Lucky", number: 1 },
+    { name: Horse = "Shiny Shoes", number: 2 },
+    { name: Horse =  "Clutch", number: 3 },
+    { name: Horse = "Stingray", number: 4 },
+    { name: Horse  = "Big Deal", number: 5 },
+    { name: Horse = "King", number: 6 },
+    { name: Horse = "Mimi", number: 7 },
+    { name: Horse =  "Lil Sister", number: 8 }
+    ],
+};
+
+// Jumbotron
+const jumbotron = {Sponsorship: "Crypto Classic", track: track };
+  horses: track.horses.map((horse) => (
+    `<div key=${horse.number}>${horse.name} (${horse.number})</div>`
+  )),
+  coins: 100,
+  update: () => {
+    console.log("Coins updated");
+  }
+};
+
+// Coin Betting
+const betting = {
+  horses: track.horses,
+  bets: {},
+  update: (bet) => {
+    console.log("Bet updated");
+  }
+};
+
+// Connect Wallet
+const wallet = {
+  connect: () => {
+    console.log("Wallet connected");
+  },
+  deposit: (coins) => {
+    console.log(`Deposited ${coins} coins`);
+  }
+};
+
+// Place Wager
+const wager = {
+  horse: null,
+  amount: null,
+  place: null,
+  update: (bet) => {
+    console.log("Wager updated");
+  }
+};
+
+// Sponsorship
+const sponsorship = {
+  horse: null,
+  amount: null,
+  update: (bet) => {
+    console.log("Sponsorship updated");
+  }
+};
+
+// S&P500
+const sp500 = {
+  page: null,
+  update: () => {
+    console.log("S&P500 updated");
+  }
+};
+
+// Magic Touches
+const magic = {
+  countdown: 10,
+  start: () => {
+    console.log("Countdown started");
+  },
+  end: () => {
+    console.log("Countdown ended");
+  }
+};//  //  
+// // Crypto Classic
+// // 
+// //// index.js - Main Game Controller
+import React, { useState, useEffect, useRef } from 'react';
+import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
+import { Horse, Track, Betting, Jumbotron, Wallet, MarketData } from './components';
+
+// Game class to manage the entire horse racing game
+class HorseRacingGame {Crypto Classic
+  constructor() {
+    // Game configuration
+    this.config = {
+      raceLength: 1000,  // Length of race track in units
+      laneWidth: 80,     // Width of each lane
+      numLanes: 8,       // Number of lanes/horses
+      coinValue: 10,     // Default coin value in USD
+      initialCoins: 100, // Starting coins for player
+      minBet: 1,         // Minimum bet amount
+      maxBet: 50,        // Maximum bet amount
+      payoutMultipliers: {
+        win: { // Horse finishes 1st
+          standard: 5,
+          favorite: 3,
+          longshot: 10
+        },
+        place: { // Horse finishes 1st or 2nd
+          standard: 2,
+          favorite: 1.5,
+          longshot: 4
+        },
+        show: { // Horse finishes 1st, 2nd, or 3rd
+          standard: 1.5,
+          favorite: 1.2,
+          longshot: 2.5
+        }
+      }
+    };
+
+    // Game state
+    this.state = {
+      isRaceActive: false,
+      isRaceFinished: false,
+      coins: this.configuration.initialCoins,
+      currentBets: [],
+      raceHistory: [],
+      horses: [
+        { 
+          id: 1, 
+          name: "Thunder Bolt", 
+          baseSpeed: 8, 
+          acceleration: 0.8, 
+          stamina: 0.9, 
+          odds: 3.5,
+          position: 0,
+          lane: 0,
+          color: "#E53935", // Red
+          type: "favorite",
+          sponsorValue: 0
+        },
+        { 
+          id: 2, 
+          name: "Silver Arrow", 
+          baseSpeed: 7.8, 
+          acceleration: 0.9, 
+          stamina: 0.85, 
+          odds: 4.2,
+          position: 0,
+          lane: 1,
+          color: "#1E88E5", // Blue
+          type: "standard",
+          sponsorValue: 0
+        },
+        { 
+          id: 3, 
+          name: "Golden Hoof", 
+          baseSpeed: 7.5, 
+          acceleration: 0.85, 
+          stamina: 0.95, 
+          odds: 5.0,
+          position: 0,
+          lane: 2,
+          color: "#FDD835", // Yellow
+          type: "standard",
+          sponsorValue: 0
+        },
+        { 
+          id: 4, 
+          name: "Night Fury", 
+          baseSpeed: 7.9, 
+          acceleration: 0.75, 
+          stamina: 0.9, 
+          odds: 6.5,
+          position: 0,
+          lane: 3,
+          color: "#5E35B1", // Purple
+          type: "standard",
+          sponsorValue: 0
+        },
+        { 
+          id: 5, 
+          name: "Lucky Charm", 
+          baseSpeed: 7.2, 
+          acceleration: 0.95, 
+          stamina: 0.8, 
+          odds: 7.0,
+          position: 0,
+          lane: 4,
+          color: "#43A047", // Green
+          type: "standard",
+          sponsorValue: 0
+        },
+        { 
+          id: 6, 
+          name: "Blazing Hooves", 
+          baseSpeed: 7.7, 
+          acceleration: 0.85, 
+          stamina: 0.85, 
+          odds: 5.5,
+          position: 0,
+          lane: 5,
+          color: "#FB8C00", // Orange
+          type: "standard",
+          sponsorValue: 0
+        },
+        { 
+          id: 7, 
+          name: "Shadow Runner", 
+          baseSpeed: 8.2, 
+          acceleration: 0.7, 
+          stamina: 0.8, 
+          odds: 7.5,
+          position: 0,
+          lane: 6,
+          color: "#212121", // Black
+          type: "standard",
+          sponsorValue: 0
+        },
+        { 
+          id: 8, 
+          name: "Underdog", 
+          baseSpeed: 6.5, 
+          acceleration: 1.0, 
+          stamina: 1.0, 
+          odds: 15.0,
+          position: 0,
+          lane: 7,
+          color: "#8D6E63", // Brown
+          type: "longshot",
+          sponsorValue: 0
+        }
+      ],
+      marketData: {
+        s_and_p: {
+          current: 5280,
+          history: [5250, 5260, 5275, 5280],
+          trend: "up"
+        },
+        cryptoCoins: [
+          { name: "BitGold", price: 65000, change: 2.5 },
+          { name: "Etherhoof", price: 3500, change: -1.2 },
+          { name: "HorseCoin", price: 250, change: 5.7 },
+          { name: "StableTrot", price: 1, change: 0 }
+        ]
+      }
+    };
+
+    // 3D rendering properties
+    this.scene = null;
+    this.camera = null;
+    this.renderer = null;
+    this.controls = null;
+    this.horseModels = [];
+    this.trackModel = null;
+    this.container = null;
+
+    // Animation timing
+    this.clock = new THREE.Clock();
+    this.lastTime = 0;
+  }
+
+  // Initialize the game
+  init(containerElement) {
+    // Store container reference
+    this.container = containerElement;
+
+    // Set up 3D scene
+    this.setupScene();
+
+    // Load assets (horse models, track, etc.)
+    this.loadAssets();
+
+    // Set up event listeners
+    this.setupEventListeners();
+
+    // Start animation loop
+    this.animate();
+  }
+
+  // Set up the 3D scene, camera, renderer, etc.
+  setupScene() {
+    // Create scene
+    this.scene = new THREE.Scene();
+    this.scene.background = new THREE.Color(0x87CEEB); // Sky blue
+
+    // Create camera
+    this.camera = new THREE.PerspectiveCamera(
+      75, 
+      this.container.clientWidth / this.container.clientHeight, 
+      0.1, 
+      2000
+    );
+    this.camera.position.set(0, 150, 400);
+
+    // Create renderer
+    this.renderer = new THREE.WebGLRenderer({ antialias: true });
+    this.renderer.setSize(this.container.clientWidth, this.container.clientHeight);
+    this.renderer.shadowMap.enabled = true;
+    this.container.appendChild(this.renderer.domElement);
+
+    // Add camera controls
+    this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+    this.controls.enablePan = true;
+    this.controls.enableZoom = true;
+    this.controls.minDistance = 100;
+    this.controls.maxDistance = 1000;
+
+    // Add lights
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    this.scene.add(ambientLight);
+
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    directionalLight.position.set(100, 300, 100);
+    directionalLight.castShadow = true;
+    directionalLight.shadow.mapSize.width = 2048;
+    directionalLight.shadow.mapSize.height = 2048;
+    this.scene.add(directionalLight);
+
+    // Handle window resize
+    window.addEventListener('resize', () => {
+      this.camera.aspect = this.container.clientWidth / this.container.clientHeight;
+      this.camera.updateProjectionMatrix();
+      this.renderer.setSize(this.container.clientWidth, this.container.clientHeight);
+    });
+  }
+
+  // Load 3D models and other assets
+  loadAssets() {
+    // Create the track
+    this.createTrack();
+
+    // Load horse models
+    const loader = new GLTFLoader();
+
+    // For now, use simple geometries for horses
+    // In a real implementation, you'd load detailed models
+    this.state.horses.forEach(horse => {
+      const horseGeometry = new THREE.BoxGeometry(20, 20, 40);
+      const horseMaterial = new THREE.MeshLambertMaterial({ color: horse.color });
+      const horseModel = new THREE.Mesh(horseGeometry, horseMaterial);
+
+      // Position horse at starting line in its lane
+      horseModel.position.x = (horse.lane - (this.config.numLanes - 1) / 2) * this.config.laneWidth;
+      horseModel.position.y = 10;
+      horseModel.position.z = -this.config.raceLength / 2;
+
+      // Add to scene and store reference
+      this.scene.add(horseModel);
+      this.horseModels[horse.id] = horseModel;
+    });
+  }
+
+  // Create the race track
+  createTrack() {
+    // Ground plane
+    const groundGeometry = new THREE.PlaneGeometry(
+      this.config.laneWidth * this.config.numLanes * 1.5, 
+      this.config.raceLength * 1.2
+    );
+    const groundMaterial = new THREE.MeshLambertMaterial({ 
+      color: 0x7CFC00, // Grass green
+      side: THREE.DoubleSide 
+    });
+    const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+    ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
+    this.scene.add(ground);
+
+    // Track surface
+    const trackGeometry = new THREE.PlaneGeometry(
+      this.config.laneWidth * this.config.numLanes, 
+      this.config.raceLength
+    );
+    const trackMaterial = new THREE.MeshLambertMaterial({ 
+      color: 0xBDB76B, // Dirt color
+      side: THREE.DoubleSide 
+    });
+    const track = new THREE.Mesh(trackGeometry, trackMaterial);
+    track.rotation.x = -Math.PI / 2;
+    track.position.y = 0.1; // Slightly above ground
+    track.receiveShadow = true;
+    this.scene.add(track);
+
+    // Lane dividers
+    for (let i = 0; i <= this.config.numLanes; i++) {
+      const x = (i - this.config.numLanes / 2) * this.config.laneWidth;
+
+      const dividerGeometry = new THREE.BoxGeometry(2, 1, this.config.raceLength);
+      const dividerMaterial = new THREE.MeshLambertMaterial({ color: 0xFFFFFF });
+      const divider = new THREE.Mesh(dividerGeometry, dividerMaterial);
+
+      divider.position.x = x;
+      divider.position.y = 0.2;
+      this.scene.add(divider);
+    }
+
+    // Start line
+    const startLineGeometry = new THREE.BoxGeometry(
+      this.config.laneWidth * this.config.numLanes, 
+      1, 
+      5
+    );
+    const startLineMaterial = new THREE.MeshLambertMaterial({ color: 0xFFFFFF });
+    const startLine = new THREE.Mesh(startLineGeometry, startLineMaterial);
+    startLine.position.y = 0.2;
+    startLine.position.z = -this.config.raceLength / 2;
+    this.scene.add(startLine);
+
+    // Finish line
+    const finishLineGeometry = new THREE.BoxGeometry(
+      this.config.laneWidth * this.config.numLanes, 
+      1, 
+      5
+    );
+    const finishLineMaterial = new THREE.MeshLambertMaterial({ 
+      color: 0xFFFFFF,
+      transparent: true,
+      opacity: 0.8 
+    });
+
+    // Create checkered pattern for finish line
+    const checkSize = 10;
+    const finishTexture = new THREE.CanvasTexture(
+      this.createCheckerPattern(
+        this.config.laneWidth * this.config.numLanes, 
+        5, 
+        checkSize
+      )
+    );
+    finishLineMaterial.map = finishTexture;
+
+    const finishLine = new THREE.Mesh(finishLineGeometry, finishLineMaterial);
+    finishLine.position.y = 0.2;
+    finishLine.position.z = this.config.raceLength / 2 - 5;
+    this.scene.add(finishLine);
+
+    // Add spectator stands
+    this.createSpectatorStands();
+  }
+
+  // Create a checker pattern canvas for the finish line
+  createCheckerPattern(width, height, checkSize) {
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = 'white';
+    ctx.fillRect(0, 0, width, height);
+
+    ctx.fillStyle = 'black';
+    let toggle = false;
+
+    for (let x = 0; x < width; x += checkSize) {
+      toggle = !toggle;
+      for (let y = 0; y < height; y += checkSize) {
+        if (toggle) {
+          ctx.fillRect(x, y, checkSize, checkSize);
+        }
+        toggle = !toggle;
+      }
+    }
+
+    return canvas;
+  }
+
+  // Create spectator stands
+  createSpectatorStands() {
+    // Left-side stands
+    const leftStandGeometry = new THREE.BoxGeometry(
+      50, 
+      30, 
+      this.config.raceLength * 0.6
+    );
+    const standMaterial = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
+    const leftStand = new THREE.Mesh(leftStandGeometry, standMaterial);
+
+    leftStand.position.x = -this.config.laneWidth * this.config.numLanes / 2 - 40;
+    leftStand.position.y = 15;
+    this.scene.add(leftStand);
+
+    // Right-side stands
+    const rightStandGeometry = new THREE.BoxGeometry(
+      50, 
+      30, 
+      this.config.raceLength * 0.6
+    );
+    const rightStand = new THREE.Mesh(rightStandGeometry, standMaterial);
+
+    rightStand.position.x = this.config.laneWidth * this.config.numLanes / 2 + 40;
+    rightStand.position.y = 15;
+    this.scene.add(rightStand);
+
+    // Add simple crowd
+    this.addCrowd(leftStand, 20, 40);
+    this.addCrowd(rightStand, 20, 40);
+  }
+
+  // Add simple crowd representation
+  addCrowd(stand, numRows, peoplePerRow) {
+    const crowdGroup = new THREE.Group();
+
+    for (let i = 0; i < numRows; i++) {
+      for (let j = 0; j < peoplePerRow; j++) {
+        // Simple person representation
+        const headGeometry = new THREE.SphereGeometry(1, 8, 8);
+        const bodyGeometry = new THREE.BoxGeometry(1, 2, 1);
+
+        // Random colors for variety
+        const color = new THREE.Color(
+          0.5 + Math.random() * 0.5,
+          0.5 + Math.random() * 0.5,
+          0.5 + Math.random() * 0.5
+        );
+
+        const personMaterial = new THREE.MeshLambertMaterial({ color });
+
+        const head = new THREE.Mesh(headGeometry, personMaterial);
+        const body = new THREE.Mesh(bodyGeometry, personMaterial);
+
+        head.position.y = 1.5;
+
+        const person = new THREE.Group();
+        person.add(head);
+        person.add(body);
+
+        // Position within stand
+        person.position.x = (j - peoplePerRow / 2) * 2;
+        person.position.y = stand.position.y + 15 + i * 2;
+        person.position.z = (Math.random() - 0.5) * stand.geometry.parameters.depth * 0.8;
+
+        crowdGroup.add(person);
+      }
+    }
+
+    this.scene.add(crowdGroup);
+  }
+
+  // Set up event listeners for user interactions
+  setupEventListeners() {
+    // Events would be handled by React components in the actual implementation
+  }
+
+  // Animation loop
+  animate() {
+    requestAnimationFrame(() => this.animate());
+
+    const currentTime = this.clock.getElapsedTime();
+    const deltaTime = currentTime - this.lastTime;
+    this.lastTime = currentTime;
+
+    // Update race progress if race is active
+    if (this.state.isRaceActive && !this.state.isRaceFinished) {
+      this.updateRace(deltaTime);
+    }
+
+    // Update controls
+    this.controls.update();
+
+    // Render scene
+    this.renderer.render(this.scene, this.camera);
+  }
+
+  // Update race progress
+  updateRace(deltaTime) {
+    let finishedHorses = 0;
+    const finishLine = this.config.raceLength / 2 - 5;
+
+    this.state.horses.forEach(horse => {
+      if (horse.position >= finishLine) {
+        finishedHorses++;
+        return;
+      }
+
+      // Calculate horse's speed based on its stats, position in race, and random factors
+      let speed = horse.baseSpeed;
+
+      // Adjust speed based on position in race
+      const raceProgress = horse.position / finishLine;
+
+      // Start phase (acceleration)
+      if (raceProgress < 0.2) {
+        speed *= 0.8 + horse.acceleration * 0.4 * (raceProgress * 5);
+      } 
+      // Middle phase (maintaining speed)
+      else if (raceProgress < 0.7) {
+        speed *= 0.9 + horse.stamina * 0.2;
+      } 
+      // Final phase (sprint or fatigue)
+      else {
+        const staminaFactor = horse.stamina - (1 - horse.stamina) * (raceProgress - 0.7) * 3;
+        speed *= 0.8 + staminaFactor * 0.4;
+      }
+
+      // Add random variation
+      speed *= 0.9 + Math.random() * 0.2;
+
+      // Move horse based on speed and delta time
+      horse.position += speed * deltaTime * 50;
+
+      // Apply market effects if enabled
+      if (this.config.marketInfluence) {
+        const marketEffect = this.calculateMarketEffect(horse);
+        horse.position += marketEffect * deltaTime * 10;
+      }
+
+      // Update 3D model position
+      if (this.horseModels[horse.id]) {
+        this.horseModels[horse.id].position.z = -finishLine + horse.position;
+      }
+    });
+
+    // Check if race is finished (all horses crossed finish line)
+    if (finishedHorses === this.state.horses.length) {
+      this.finishRace();
+    }
+  }
+
+  // Calculate market influence on horse performance
+  calculateMarketEffect(horse) {
+    // In a real implementation, you would tie this to actual market data
+    // and sponsorship values, but here's a simple example:
+
+    // If the horse is sponsored, its performance is affected by the market
+    if (horse.sponsorValue > 0) {
+      // Get related market data
+      const marketData = this.state.marketData;
+
+      // Example: S&P 500 trend affects "favorite" type horses
+      if (horse.type === "favorite" && marketData.s_and_p.trend === "up") {
+        return 0.5; // Positive boost
+      }
+
+      // Example: Crypto coin performance affects "longshot" horses
+      if (horse.type === "longshot") {
+        const relevantCoin = marketData.cryptoCoins.find(c => c.name === "HorseCoin");
+        if (relevantCoin && relevantCoin.change > 0) {
+          return relevantCoin.change / 10; // Positive boost based on % change
+        }
+      }
+    }
+
+    return 0; // No effect
+  }
+
+  // Finish the race and process results
+  finishRace() {
+    this.state.isRaceActive = false;
+    this.state.isRaceFinished = true;
+
+    // Sort horses by position to determine finishing order
+    const finishedHorses = [...this.state.horses]
+      .sort((a, b) => b.position - a.position);
+
+    // Store race results
+    const raceResults = {
+      id: this.state.raceHistory.length + 1,
+      date: new Date(),
+      results: finishedHorses.map((horse, index) => ({
+        position: index + 1,
+        horseId: horse.id,
+        horseName: horse.name
+      }))
+    };
+
+    this.state.raceHistory.push(raceResults);
+
+    // Process bets and update coins
+    this.processBets(finishedHorses);
+
+    // Notify of race completion
+    console.log("Race finished!", raceResults);
+
+    // In a real implementation, you would trigger UI updates here
+  }
+
+  // Process bets after race completion
+  processBets(finishedHorses) {
+    // Get the IDs of the top three horses
+    const firstPlaceId = finishedHorses[0].id;
+    const secondPlaceId = finishedHorses[1].id;
+    const thirdPlaceId = finishedHorses[2].id;
+
+    // Process each bet
+    this.state.currentBets.forEach(bet => {
+      let won = false;
+      let payout = 0;
+
+      // Get the horse's type for payout calculation
+      const horse = this.state.horses.find(h => h.id === bet.horseId);
+      const horseType = horse ? horse.type : "standard";
+
+      // Check if bet won based on bet type
+      switch (bet.type) {
+        case "win":
+          if (bet.horseId === firstPlaceId) {
+            won = true;
+            payout = bet.amount * this.config.payoutMultipliers.win[horseType];
+          
+          
+ 
