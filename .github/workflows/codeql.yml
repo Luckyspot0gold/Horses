@@ -1,176 +1,693 @@
-# For most projects, this workflow file will not need changing; you simply need
-# to commit it to your repository.
-#
-# You may wish to alter this file to override the set of languages analyzed,
-# or to provide custom queries or build logic.
-#
-# ******** NOTE ********
-# We have attempted to detect the languages in your repository. Please check
-# the `language` matrix defined below to confirm you have the correct set of
-# supported CodeQL languages.
-#
-name: "CodeQL Advanced"
+// Construction Safety Interactive Game
+// Integration with Unreal Engine 5, Venice OSHA Modules, and Hugging Face LLMs
 
-on:
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
-  schedule:
-    - cron: '37 8 * * 6'
+// Game Configuration
+const GameConfig = {
+  // Integration points for external systems
+  integrations: {
+    unrealEngine: {
+      version: "5.1",
+      apiEndpoint: "/api/unreal/",
+      assetPath: "/Game/ConstructionSafety/",
+      physicsEnabled: true,
+      renderingQuality: "Epic"
+    },
+    venice: {
+      oshaModules: ["FallProtection", "ElectricalSafety", "EquipmentOperation", "HazardIdentification"],
+      apiEndpoint: "/api/venice/",
+      moduleBasePath: "/osha/modules/"
+    },
+    huggingFace: {
+      models: {
+        npcDialogue: "safety-dialogue-llm",
+        scenarioGeneration: "construction-scenario-gen",
+        playerFeedback: "safety-feedback-llm"
+      },
+      apiEndpoint: "/api/hf/"
+    },
+    stoneYard: {
+      deploymentId: "construction-safety-sov",
+      apiEndpoint: "/api/stoneyardSov/",
+      configPath: "/config/deployment.json"
+    }
+  },
+  
+  // Game mechanics
+  mechanics: {
+    scoringSystem: {
+      hazardIdentification: 100,
+      hazardMitigation: 250,
+      taskCompletion: 500,
+      safetyViolation: -150,
+      timeBonus: {
+        enabled: true,
+        formula: "remainingTime * 2"
+      }
+    },
+    progressionSystem: {
+      levels: [
+        { id: 1, name: "Apprentice", requiredScore: 0, unlocksModules: ["BasicSiteNavigation"] },
+        { id: 2, name: "Safety Officer", requiredScore: 1000, unlocksModules: ["HazardIdentification"] },
+        { id: 3, name: "Site Supervisor", requiredScore: 3000, unlocksModules: ["EquipmentOperation"] },
+        { id: 4, name: "Project Manager", requiredScore: 7000, unlocksModules: ["EmergencyResponse"] },
+        { id: 5, name: "Safety Director", requiredScore: 15000, unlocksModules: ["SiteDesign"] }
+      ]
+    },
+    gameplayModes: {
+      training: {
+        timeLimit: false,
+        hints: true,
+        consequencesDisabled: true
+      },
+      assessment: {
+        timeLimit: true,
+        hints: false,
+        consequencesEnabled: true,
+        certification: true
+      },
+      challenge: {
+        timeLimit: true,
+        randomEvents: true,
+        weatherEffects: true,
+        leaderboard: true
+      }
+    }
+  }
+};
 
-jobs:
-  analyze:
-    name: Analyze (${{ matrix.language }})
-    # Runner size impacts CodeQL analysis time. To learn more, please see:
-    #   - https://gh.io/recommended-hardware-resources-for-running-codeql
-    #   - https://gh.io/supported-runners-and-hardware-resources
-    #   - https://gh.io/using-larger-runners (GitHub.com only)
-    # Consider using larger runners or machines with greater resources for possible analysis time improvements.
-    runs-on: ${{ (matrix.language == 'swift' && 'macos-latest') || 'ubuntu-latest' }}
-    permissions:
-      # required for all workflows
-      security-events: write
+// Game State Management
+class GameStateManager {
+  constructor() {
+    this.currentPlayer = null;
+    this.currentLevel = null;
+    this.currentMode = null;
+    this.score = 0;
+    this.timeRemaining = 0;
+    this.activeScenario = null;
+    this.identifiedHazards = [];
+    this.mitigatedHazards = [];
+    this.completedTasks = [];
+    this.activeEquipment = null;
+    this.playerLocation = { x: 0, y: 0, z: 0 };
+    this.gameStatus = "menu"; // menu, loading, active, paused, complete, failed
+    this.notifications = [];
+    this.activeDialogue = null;
+  }
+  
+  initializeGame(playerId, levelId, gameMode) {
+    // Set up initial game state
+    this.currentPlayer = playerId;
+    this.currentLevel = GameConfig.mechanics.progressionSystem.levels.find(l => l.id === levelId);
+    this.currentMode = GameConfig.mechanics.gameplayModes[gameMode];
+    this.score = 0;
+    this.gameStatus = "loading";
+    
+    // Load assets and scenario from Unreal Engine
+    this.loadScenario(levelId)
+      .then(scenario => {
+        this.activeScenario = scenario;
+        this.timeRemaining = this.currentMode.timeLimit ? scenario.timeLimit : Infinity;
+        this.gameStatus = "active";
+        this.startGameLoop();
+      })
+      .catch(error => {
+        console.error("Failed to load scenario:", error);
+        this.gameStatus = "failed";
+      });
+  }
+  
+  async loadScenario(levelId) {
+    // Fetch scenario from Venice OSHA Modules based on level
+    const response = await fetch(`${GameConfig.integrations.venice.apiEndpoint}scenarios/${levelId}`);
+    const scenarioTemplate = await response.json();
+    
+    // Use Hugging Face LLM to generate variations or customize the scenario
+    const customizedScenario = await this.generateCustomScenario(scenarioTemplate);
+    
+    // Prepare scenario for Unreal Engine rendering
+    await this.prepareUnrealScenario(customizedScenario);
+    
+    return customizedScenario;
+  }
+  
+  async generateCustomScenario(scenarioTemplate) {
+    // Use the Hugging Face model to customize the scenario
+    const generationParams = {
+      model: GameConfig.integrations.huggingFace.models.scenarioGeneration,
+      template: scenarioTemplate,
+      playerLevel: this.currentLevel.id,
+      previousPerformance: this.currentPlayer.performanceHistory || []
+    };
+    
+    const response = await fetch(`${GameConfig.integrations.huggingFace.apiEndpoint}generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(generationParams)
+    });
+    
+    return await response.json();
+  }
+  
+  async prepareUnrealScenario(scenario) {
+    // Send scenario data to Unreal Engine for rendering
+    await fetch(`${GameConfig.integrations.unrealEngine.apiEndpoint}loadScenario`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        scenarioData: scenario,
+        renderingQuality: GameConfig.integrations.unrealEngine.renderingQuality,
+        physicsEnabled: GameConfig.integrations.unrealEngine.physicsEnabled
+      })
+    });
+  }
+  
+  startGameLoop() {
+    // Start the main game loop
+    this.gameLoopInterval = setInterval(() => {
+      if (this.gameStatus !== "active") {
+        clearInterval(this.gameLoopInterval);
+        return;
+      }
+      
+      // Update time remaining
+      if (this.currentMode.timeLimit) {
+        this.timeRemaining--;
+        if (this.timeRemaining <= 0) {
+          this.endGame("timeExpired");
+        }
+      }
+      
+      // Check for win conditions
+      this.checkWinCondition();
+      
+      // Process any AI-driven events or NPC behaviors
+      this.processAIEvents();
+      
+    }, 1000); // Loop every second
+  }
+  
+  identifyHazard(hazardId) {
+    if (this.identifiedHazards.includes(hazardId)) return;
+    
+    const hazard = this.activeScenario.hazards.find(h => h.id === hazardId);
+    if (!hazard) return;
+    
+    // Add hazard to identified list
+    this.identifiedHazards.push(hazardId);
+    
+    // Update score
+    this.score += GameConfig.mechanics.scoringSystem.hazardIdentification;
+    
+    // Add notification
+    this.addNotification(`Hazard identified: ${hazard.name}`, "success");
+    
+    // Check if this completes a task objective
+    this.checkTaskObjectives("identify", hazardId);
+    
+    // Request AI feedback on identification
+    this.requestAIFeedback("hazardIdentification", hazardId);
+  }
+  
+  mitigateHazard(hazardId, mitigationMethod) {
+    if (!this.identifiedHazards.includes(hazardId) || this.mitigatedHazards.includes(hazardId)) return;
+    
+    const hazard = this.activeScenario.hazards.find(h => h.id === hazardId);
+    if (!hazard) return;
+    
+    // Check if mitigation method is valid for this hazard
+    if (!hazard.validMitigations.includes(mitigationMethod)) {
+      this.addNotification(`Invalid mitigation method for ${hazard.name}`, "error");
+      return;
+    }
+    
+    // Add hazard to mitigated list
+    this.mitigatedHazards.push(hazardId);
+    
+    // Update score
+    this.score += GameConfig.mechanics.scoringSystem.hazardMitigation;
+    
+    // Notify player
+    this.addNotification(`Hazard mitigated: ${hazard.name}`, "success");
+    
+    // Check if this completes a task objective
+    this.checkTaskObjectives("mitigate", hazardId);
+    
+    // Request AI feedback on mitigation
+    this.requestAIFeedback("hazardMitigation", hazardId);
+    
+    // Update the visual representation in Unreal Engine
+    this.updateHazardVisual(hazardId, "mitigated");
+  }
+  
+  async updateHazardVisual(hazardId, state) {
+    await fetch(`${GameConfig.integrations.unrealEngine.apiEndpoint}updateObject`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        objectId: `hazard_${hazardId}`,
+        state: state
+      })
+    });
+  }
+  
+  checkTaskObjectives(action, objectId) {
+    // Check if this action completes any task objectives
+    this.activeScenario.tasks.forEach(task => {
+      task.objectives.forEach(objective => {
+        if (!objective.completed && 
+            objective.type === action && 
+            objective.targetId === objectId) {
+          objective.completed = true;
+          this.addNotification(`Objective completed: ${objective.description}`, "task");
+          
+          // Check if all objectives for this task are completed
+          const allCompleted = task.objectives.every(obj => obj.completed);
+          if (allCompleted && !this.completedTasks.includes(task.id)) {
+            this.completeTask(task.id);
+          }
+        }
+      });
+    });
+  }
+  
+  completeTask(taskId) {
+    // Mark task as completed
+    this.completedTasks.push(taskId);
+    
+    // Update score
+    this.score += GameConfig.mechanics.scoringSystem.taskCompletion;
+    
+    const task = this.activeScenario.tasks.find(t => t.id === taskId);
+    if (task) {
+      this.addNotification(`Task completed: ${task.name}`, "achievement");
+    }
+    
+    // Request AI feedback on task completion
+    this.requestAIFeedback("taskCompletion", taskId);
+  }
+  
+  async requestAIFeedback(actionType, objectId) {
+    // Request feedback from AI based on player action
+    const params = {
+      model: GameConfig.integrations.huggingFace.models.playerFeedback,
+      actionType: actionType,
+      objectId: objectId,
+      playerLevel: this.currentLevel.id,
+      playerScore: this.score,
+      gameContext: {
+        scenario: this.activeScenario.id,
+        identifiedHazards: this.identifiedHazards,
+        mitigatedHazards: this.mitigatedHazards,
+        completedTasks: this.completedTasks
+      }
+    };
+    
+    const response = await fetch(`${GameConfig.integrations.huggingFace.apiEndpoint}feedback`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params)
+    });
+    
+    const feedback = await response.json();
+    
+    // Show feedback to player
+    if (feedback.message) {
+      this.addNotification(feedback.message, "feedback");
+    }
+    
+    // If there's detailed feedback, trigger dialogue
+    if (feedback.dialogue) {
+      this.startDialogue(feedback.dialogue);
+    }
+  }
+  
+  startDialogue(dialogueData) {
+    this.activeDialogue = dialogueData;
+    this.gameStatus = "dialogue";
+    
+    // Notify Unreal Engine to show dialogue UI
+    this.updateGameUI("showDialogue", this.activeDialogue);
+  }
+  
+  respondToDialogue(responseId) {
+    // Process player's dialogue choice
+    const response = this.activeDialogue.responses.find(r => r.id === responseId);
+    if (!response) return;
+    
+    // Apply any effects from the dialogue response
+    if (response.effects) {
+      if (response.effects.score) {
+        this.score += response.effects.score;
+      }
+      
+      if (response.effects.unlock) {
+        // Unlock new content or features
+        this.unlockContent(response.effects.unlock);
+      }
+    }
+    
+    // Continue dialogue or end it
+    if (response.nextDialogue) {
+      this.activeDialogue = response.nextDialogue;
+      this.updateGameUI("updateDialogue", this.activeDialogue);
+    } else {
+      this.activeDialogue = null;
+      this.gameStatus = "active";
+      this.updateGameUI("hideDialogue");
+    }
+  }
+  
+  updateGameUI(action, data) {
+    // Send UI update to Unreal Engine
+    fetch(`${GameConfig.integrations.unrealEngine.apiEndpoint}updateUI`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: action,
+        data: data
+      })
+    });
+  }
+  
+  addNotification(message, type) {
+    const notification = {
+      id: Date.now(),
+      message: message,
+      type: type,
+      timestamp: Date.now()
+    };
+    
+    this.notifications.push(notification);
+    
+    // Limit notifications to last 10
+    if (this.notifications.length > 10) {
+      this.notifications.shift();
+    }
+    
+    // Update UI with new notification
+    this.updateGameUI("notification", notification);
+  }
+  
+  checkWinCondition() {
+    // Check if player has completed all tasks
+    const allTasksCompleted = this.activeScenario.tasks.every(task => 
+      this.completedTasks.includes(task.id));
+    
+    // Check if all required hazards have been identified and mitigated
+    const allHazardsHandled = this.activeScenario.requiredHazards.every(hazardId => 
+      this.identifiedHazards.includes(hazardId) && this.mitigatedHazards.includes(hazardId));
+    
+    if (allTasksCompleted && allHazardsHandled) {
+      this.endGame("success");
+    }
+  }
+  
+  processAIEvents() {
+    // Check if it's time for a random event
+    if (this.currentMode.randomEvents && Math.random() < 0.05) { // 5% chance each second
+      this.triggerRandomEvent();
+    }
+    
+    // Update NPCs and dynamic elements
+    this.updateNPCBehaviors();
+  }
+  
+  async triggerRandomEvent() {
+    // Request a random event from the AI system
+    const params = {
+      model: GameConfig.integrations.huggingFace.models.scenarioGeneration,
+      eventType: "random",
+      currentScenario: this.activeScenario.id,
+      playerProgress: {
+        score: this.score,
+        identifiedHazards: this.identifiedHazards,
+        mitigatedHazards: this.mitigatedHazards,
+        completedTasks: this.completedTasks
+      }
+    };
+    
+    const response = await fetch(`${GameConfig.integrations.huggingFace.apiEndpoint}generateEvent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params)
+    });
+    
+    const event = await response.json();
+    
+    // Process the event
+    this.addNotification(`Event: ${event.description}`, "event");
+    
+    // Apply event effects
+    if (event.newHazards) {
+      event.newHazards.forEach(hazard => {
+        this.activeScenario.hazards.push(hazard);
+        this.updateGameUI("addHazard", hazard);
+      });
+    }
+    
+    if (event.weatherChange) {
+      this.updateWeather(event.weatherChange);
+    }
+    
+    if (event.dialogue) {
+      this.startDialogue(event.dialogue);
+    }
+  }
+  
+  async updateNPCBehaviors() {
+    // Update NPC behaviors based on player actions
+    const npcs = this.activeScenario.npcs || [];
+    for (const npc of npcs) {
+      if (npc.active && this.isPlayerNearNPC(npc)) {
+        // Generate NPC behavior
+        const behaviorParams = {
+          model: GameConfig.integrations.huggingFace.models.npcDialogue,
+          npcId: npc.id,
+          npcType: npc.type,
+          playerActions: {
+            recentActions: this.getRecentActions(10),
+            nearbyHazards: this.getNearbyHazards(this.playerLocation, 10)
+          }
+        };
+        
+        const response = await fetch(`${GameConfig.integrations.huggingFace.apiEndpoint}npcBehavior`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(behaviorParams)
+        });
+        
+        const behavior = await response.json();
+        
+        // Apply NPC behavior
+        if (behavior.action === "startDialogue") {
+          this.startDialogue(behavior.dialogue);
+        } else if (behavior.action === "performAction") {
+          this.performNPCAction(npc.id, behavior);
+        }
+      }
+    }
+  }
+  
+  async updateWeather(weatherData) {
+    // Send weather update to Unreal Engine
+    await fetch(`${GameConfig.integrations.unrealEngine.apiEndpoint}updateWeather`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(weatherData)
+    });
+    
+    // Update game state with new weather
+    this.activeScenario.currentWeather = weatherData.type;
+    
+    // Add notification
+    this.addNotification(`Weather changed to ${weatherData.type}`, "environment");
+  }
+  
+  async performNPCAction(npcId, actionData) {
+    // Send NPC action to Unreal Engine
+    await fetch(`${GameConfig.integrations.unrealEngine.apiEndpoint}npcAction`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        npcId: npcId,
+        action: actionData
+      })
+    });
+  }
+  
+  isPlayerNearNPC(npc) {
+    // Check if player is within interaction distance of NPC
+    const distance = this.calculateDistance(this.playerLocation, npc.position);
+    return distance < 5; // 5 units of distance for interaction
+  }
+  
+  calculateDistance(pos1, pos2) {
+    return Math.sqrt(
+      Math.pow(pos1.x - pos2.x, 2) + 
+      Math.pow(pos1.y - pos2.y, 2) + 
+      Math.pow(pos1.z - pos2.z, 2)
+    );
+  }
+  
+  getRecentActions(count) {
+    // Get the most recent player actions
+    // This would be implemented to track player actions
+    return [];
+  }
+  
+  getNearbyHazards(position, radius) {
+    // Get hazards near a position
+    return this.activeScenario.hazards.filter(hazard => {
+      return this.calculateDistance(position, hazard.position) < radius;
+    });
+  }
+  
+  endGame(reason) {
+    // End the current game session
+    this.gameStatus = reason === "success" ? "complete" : "failed";
+    clearInterval(this.gameLoopInterval);
+    
+    // Calculate final score
+    let finalScore = this.score;
+    
+    // Add time bonus if applicable
+    if (reason === "success" && this.currentMode.timeLimit && 
+        GameConfig.mechanics.scoringSystem.timeBonus.enabled) {
+      const timeBonus = Math.floor(eval(GameConfig.mechanics.scoringSystem.timeBonus.formula));
+      finalScore += timeBonus;
+      this.addNotification(`Time Bonus: +${timeBonus} points`, "bonus");
+    }
+    
+    // Send game results to StoneYard.sov for tracking
+    this.submitGameResults(finalScore, reason);
+    
+    // Show appropriate UI based on result
+    this.updateGameUI(reason === "success" ? "victory" : "gameOver", {
+      score: finalScore,
+      reason: reason,
+      statsummary: this.getGameSummary()
+    });
+  }
+  
+  getGameSummary() {
+    // Generate a summary of the game session
+    return {
+      timeSpent: this.currentMode.timeLimit ? (this.activeScenario.timeLimit - this.timeRemaining) : null,
+      hazardsIdentified: this.identifiedHazards.length,
+      hazardsMitigated: this.mitigatedHazards.length,
+      tasksCompleted: this.completedTasks.length,
+      score: this.score
+    };
+  }
+  
+  async submitGameResults(finalScore, outcome) {
+    // Submit results to StoneYard.sov for tracking
+    await fetch(`${GameConfig.integrations.stoneYard.apiEndpoint}submitResults`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        deploymentId: GameConfig.integrations.stoneYard.deploymentId,
+        playerId: this.currentPlayer,
+        scenarioId: this.activeScenario.id,
+        levelId: this.currentLevel.id,
+        mode: Object.keys(GameConfig.mechanics.gameplayModes).find(
+          key => GameConfig.mechanics.gameplayModes[key] === this.currentMode
+        ),
+        outcome: outcome,
+        score: finalScore,
+        summary: this.getGameSummary(),
+        timestamp: Date.now()
+      })
+    });
+  }
+  
+  // Utility methods for player movement and interaction
+  updatePlayerPosition(newPosition) {
+    this.playerLocation = newPosition;
+    
+    // Check for proximity interactions
+    this.checkProximityInteractions();
+  }
+  
+  checkProximityInteractions() {
+    // Check if player is near any interactive objects
+    this.activeScenario.hazards.forEach(hazard => {
+      const distance = this.calculateDistance(this.playerLocation, hazard.position);
+      if (distance < 3 && !this.identifiedHazards.includes(hazard.id)) {
+        // Highlight the hazard
+        this.updateHazardVisual(hazard.id, "highlight");
+      }
+    });
+    
+    // Check for equipment interactions
+    this.activeScenario.equipment.forEach(equipment => {
+      const distance = this.calculateDistance(this.playerLocation, equipment.position);
+      if (distance < 3) {
+        // Show equipment interaction UI
+        this.updateGameUI("showEquipmentUI", equipment);
+      }
+    });
+  }
+  
+  interactWithEquipment(equipmentId) {
+    const equipment = this.activeScenario.equipment.find(e => e.id === equipmentId);
+    if (!equipment) return;
+    
+    this.activeEquipment = equipmentId;
+    
+    // Show equipment interaction options
+    this.updateGameUI("equipmentInteraction", equipment);
+  }
+  
+  operateEquipment(equipmentId, operationId) {
+    const equipment = this.activeScenario.equipment.find(e => e.id === equipmentId);
+    if (!equipment) return;
+    
+    const operation = equipment.operations.find(op => op.id === operationId);
+    if (!operation) return;
+    
+    // Check if player has required training
+    const hasTraining = operation.requiredTraining.every(training => 
+      this.currentPlayer.training.includes(training)
+    );
+    
+    if (!hasTraining) {
+      this.addNotification("You don't have the required training for this operation", "warning");
+      return;
+    }
+    
+    // Execute operation
+    this.addNotification(`Operating ${equipment.name}: ${operation.name}`, "action");
+    
+    // Update visualization in Unreal Engine
+    this.updateEquipmentOperation(equipmentId, operationId);
+    
+    // Check if this completes a task objective
+    this.checkTaskObjectives("operate", `${equipmentId}_${operationId}`);
+  }
+  
+  updateEquipmentOperation(equipmentId, operationId) {
+    fetch(`${GameConfig.integrations.unrealEngine.apiEndpoint}operateEquipment`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        equipmentId: equipmentId,
+        operationId: operationId
+      })
+    });
+  }
+}
 
-      # required to fetch internal or private CodeQL packs
-      packages: read
+// Example of initializing the game (this would be called from the UI)
+function startConstructionSafetyGame(playerId, levelId, gameMode) {
+  const gameState = new GameStateManager();
+  gameState.initializeGame(playerId, levelId, gameMode);
+  return gameState;
+}
 
-      # only required for workflows in private repositories
-      actions: read
-      contents: read
-
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-        # CodeQL supports the following values keywords for 'language': 'actions', 'c-cpp', 'csharp', 'go', 'java-kotlin', 'javascript-typescript', 'python', 'ruby', 'swift'
-        # Use `c-cpp` to analyze code written in C, C++ or both
-        # Use 'java-kotlin' to analyze code written in Java, Kotlin or both
-        # Use 'javascript-typescript' to analyze code written in JavaScript, TypeScript or both
-        # To learn more about changing the languages that are analyzed or customizing the build mode for your analysis,
-        # see https://docs.github.com/en/code-security/code-scanning/creating-an-advanced-setup-for-code-scanning/customizing-your-advanced-setup-for-code-scanning.
-        # If you are analyzing a compiled language, you can modify the 'build-mode' for that language to customize how
-        # your codebase is analyzed, see https://docs.github.com/en/code-security/code-scanning/creating-an-advanced-setup-for-code-scanning/codeql-code-scanning-for-compiled-languages
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-
-    # Add any setup steps before running the `github/codeql-action/init` action.
-    # This includes steps like installing compilers or runtimes (`actions/setup-node`
-    # or others). This is typically only required for manual builds.
-    # - name: Setup runtime (example)
-    #   uses: actions/setup-example@v1
-
-    # Initializes the CodeQL tools for scanning.
-    - name: Initialize CodeQL
-      uses: github/codeql-action/init@v3
-      with:
-        languages: ${{ matrix.language }}
-        build-mode: ${{ matrix.build-mode }}
-        # If you wish to specify custom queries, you can do so here or in a config file.
-        # By default, queries listed here will override any specified in a config file.
-        # Prefix the list here with "+" to use these queries and those in the config file.
-
-        # For more details on CodeQL's query packs, refer to: https://docs.github.com/en/code-security/code-scanning/automatically-scanning-your-code-for-vulnerabilities-and-errors/configuring-code-scanning#using-queries-in-ql-packs
-        # queries: security-extended,security-and-quality
-
-    # If the analyze step fails for one of the languages you are analyzing with
-    # "We were unable to automatically build your code", modify the matrix above
-    # to set the build mode to "manual" for that language. Then modify this step
-    # to build your code.
-    # ℹ️ Command-line programs to run using the OS shell.
-    # 📚 See https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#jobsjob_idstepsrun
-    - if: matrix.build-mode == 'manual'
-      shell: bash
-      run: |
-        echo 'If you are using a "manual" build mode for one or more of the' \
-          'languages you are analyzing, replace this with the commands to build' \
-          'your code, for example:'
-        echo '  make bootstrap'
-        echo '  make release'
-        exit 1
-
-    - name: Perform CodeQL Analysis
-      uses: github/codeql-action/analyze@v3
-      with:
-        category: "/language:${{matrix.language}}"
-            - name: Download a Build Artifact
-  uses: actions/download-artifact@v4.2.1
-  with:
-    # Name of the artifact to download. If unspecified, all artifacts for the run are downloaded.
-    name: # optional
-    # Destination path. Supports basic tilde expansion. Defaults to $GITHUB_WORKSPACE
-    path: # optional
-    # A glob pattern matching the artifacts that should be downloaded. Ignored if name is specified.
-    pattern: # optional
-    # When multiple artifacts are matched, this changes the behavior of the destination directories. If true, the downloaded artifacts will be in the same directory specified by path. If false, the downloaded artifacts will be extracted into individual named directories within the specified path.
-    merge-multiple: # optional, default is false
-    # The GitHub token used to authenticate with the GitHub API. This is required when downloading artifacts from a different repository or from a different workflow run. If this is not specified, the action will attempt to download artifacts from the current repository and the current workflow run.
-    github-token: # optional
-    # The repository owner and the repository name joined together by "/". If github-token is specified, this is the repository that artifacts will be downloaded from.
-    repository: # optional, default is ${{ github.repository }}
-    # The id of the workflow run where the desired download artifact was uploaded from. If github-token is specified, this is the run that artifacts will be downloaded from.
-    run-id: # optional, default is ${{ github.run_id }}
-    # Check GitHub repo freshness
-git-clone: https://github.com/LuckyspotOgold/WyoVerse-News
-cd WyoVerse-News
-git log -n 5  # Show last 5 commits
-          graph TD
-    A[GitHub Main Repo] --> B[Vectary Designs]
-    A --> C[HuggingFace AI]
-    A --> D[Hosted Frontend]
-    // pages/index.js
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader'
-const loader = new GLTFLoader()
-loader.load('/3d-newsroom/main_press.glb', (gltf) => {
-  scene.add(gltf.scene)
-})
-# api/news_generator.py
-from huggingface_hub import InferenceClient
-client = InferenceClient(token="YOUR_HF_TOKEN")
-
-def generate_article(prompt):
-    return client.text_generation(prompt, model="mistral-7b")
-    # In Google Colab
-!pip install huggingface_hub
-from huggingface_hub import login
-login(token="YOUR_HF_TOKEN")
-# Upload custom AI model
-from huggingface_hub import HfApi
-api = HfApi()
-api.upload_folder(
-    folder_path="./custom-news-model",
-    repo_id="LuckyspotOgold/WyoVerse-Reporter",
-    repo_type="model"
-)
-/wyoverse-news  
-├── /app  
-│   ├── /pages          # Next.js routes  
-│   ├── /components     # 3D/Vectary integration  
-│   └── /styles         # Newspaper theme  
-├── /api  
-│   ├── hf-connect.js   # Hugging Face interface  
-│   └── vectary-loader.js  
-├── /public  
-│   ├── /3d-models      # Vectary exports  
-│   └── /fonts          # Custom typography  
-└── .env                # HF_API_KEY=your_token_here  
-# .github/workflows/deploy.yml
-name: Deploy WyoVerse News
-on: [push]
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-node@v3
-    - run: npm ci && npm run build
-    - uses: peaceiris/actions-gh-pages@v3
-      with:
-        github_token: ${{ secrets.GITHUB_TOKEN }}
-        publish_dir: ./out
-        # Merge branches
-git checkout main
-git merge vector-integration
-git merge hf-models
+// Export for use in other modules
+export {
+  GameConfig,
+  GameStateManager,
+  startConstructionSafetyGame
+};
