@@ -4,8 +4,8 @@
 // Game Configuration
 const GameConfig = {
   // Integration points for external systems
-  integrations: {
-    unrealEngine: {
+  integrations:{
+    unrealEngine:{
       version: "5.1",
       apiEndpoint: "/api/unreal/",
       assetPath: "/Game/ConstructionSafety/",
