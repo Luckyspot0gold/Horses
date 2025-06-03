@@ -5,3 +5,7 @@ def get_crypto_price(coin_id='bitcoin'):
     response = requests.get(url)
     data = response.json()
     return data[coin_id]['usd']
+# Adding real market data (choose one)
+from coingecko import CoinGecko  # Free tier
+from coinmetrics import CoinMetrics  # Pro features
+from alpaca import AlpacaMarkets  # Real-time trading
