@@ -96,3 +96,14 @@ def main():
 
 if __name__ == "__main__":
     main()
+    {
+  "permissions": {
+    "read": "all",
+    "write": "all",
+    "execute": "all",
+    "spend": "request_required",
+    "delete": "request_required",
+    "share": "request_required"
+  },
+  "authentication": "quantum_entanglement"
+}
